@@ -54,11 +54,23 @@ public record ColumnMeta(
     }
 
     /**
-     * Whether the database supplies this column's value on its own, meaning the
+     * Whether the database computes this column's value itself, meaning the
      * seeder must leave it out of the INSERT column list entirely.
+     *
+     * <p>Only STORED generated columns qualify. An identity column - even
+     * GENERATED ALWAYS - is deliberately excluded: TestForge assigns primary
+     * keys itself so children have keys to reference before any row is written,
+     * and supplies them with OVERRIDING SYSTEM VALUE. Letting the database
+     * assign them instead would mean reading every key back before the child
+     * table could be generated.
      */
     public boolean databaseSupplied() {
-        return generated || (identity && "ALWAYS".equalsIgnoreCase(identityGeneration));
+        return generated;
+    }
+
+    /** Whether inserting an explicit value requires OVERRIDING SYSTEM VALUE. */
+    public boolean identityAlways() {
+        return identity && "ALWAYS".equalsIgnoreCase(identityGeneration);
     }
 
     /** Whether a value may be omitted, letting a default or NULL take over. */
