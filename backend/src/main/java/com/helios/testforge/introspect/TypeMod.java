@@ -72,7 +72,7 @@ public final class TypeMod {
     }
 
     /** Strips a leading underscore, which is how PostgreSQL names array types. */
-    static String base(String udtName) {
+    public static String base(String udtName) {
         if (udtName == null) {
             return "";
         }
