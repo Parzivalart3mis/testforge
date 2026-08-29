@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LeaseServiceTest {
 
     private static LeaseService service() {
-        return new LeaseService(null, null, new TestForgeProperties(
+        return new LeaseService(null, null, null, new TestForgeProperties(
                 null, null, null,
                 new TestForgeProperties.Leases(
                         Duration.ofHours(4), Duration.ofHours(24), Duration.ofHours(2),

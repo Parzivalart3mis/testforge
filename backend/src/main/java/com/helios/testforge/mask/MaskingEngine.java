@@ -3,6 +3,7 @@ package com.helios.testforge.mask;
 import com.helios.testforge.config.TestForgeProperties;
 import com.helios.testforge.domain.request.MaskStrategy;
 import com.helios.testforge.domain.request.MaskingRule;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -41,6 +42,9 @@ public class MaskingEngine {
     private final Hmac hmac;
     private final String redactionToken;
 
+    // Explicit: the package-private constructor below is a test seam, and two
+    // candidate constructors leave Spring unable to choose between them.
+    @Autowired
     public MaskingEngine(TestForgeProperties properties) {
         String key = properties.masking().key();
         if (key == null || key.isBlank()) {

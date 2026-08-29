@@ -64,6 +64,15 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-jdbc</artifactId>
     </dependency>
+    <!--
+      Spring Boot 4 splits autoconfiguration into per-technology modules, so
+      flyway-core alone puts Flyway on the classpath without ever running it.
+      spring-boot-flyway supplies the autoconfiguration that does.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-core</artifactId>

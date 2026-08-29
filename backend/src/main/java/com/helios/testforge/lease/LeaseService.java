@@ -37,13 +37,16 @@ public class LeaseService {
 
     private final LeaseRepository repository;
     private final EphemeralDatabaseProvisioner provisioner;
+    private final CredentialCipher cipher;
     private final TestForgeProperties.Leases config;
 
     public LeaseService(LeaseRepository repository,
                         EphemeralDatabaseProvisioner provisioner,
+                        CredentialCipher cipher,
                         TestForgeProperties properties) {
         this.repository = repository;
         this.provisioner = provisioner;
+        this.cipher = cipher;
         this.config = properties.leases();
     }
 
@@ -75,10 +78,52 @@ public class LeaseService {
                 holder,
                 null);
 
-        repository.insert(lease, digest(database.password()));
+        // Encrypted rather than kept in memory: the request that asked for this
+        // dataset returned long ago, and the task that answers the claim may not
+        // be the task that provisioned the database.
+        repository.insert(lease, digest(database.password()),
+                cipher.encrypt(database.password(), lease.id().toString()));
         log.info("Issued lease {} on {} to {}, expiring {}",
                 lease.id(), lease.databaseName(), holder, lease.expiresAt());
         return lease;
+    }
+
+    /**
+     * Hands out a lease's connection string, once.
+     *
+     * <p>Provisioning is asynchronous, so the connection string cannot be
+     * returned by the request that asked for the dataset. It waits here,
+     * encrypted, until the requester collects it — and is destroyed on
+     * collection. A second call gets nothing, which is deliberate: a credential
+     * that can be fetched repeatedly is a credential sitting in every log and
+     * browser history that ever touched it.
+     *
+     * @throws LeaseException when the lease is not active, or the credential has
+     *                        already been collected
+     */
+    @Transactional
+    public String claimConnectionString(UUID id) {
+        Lease lease = repository.findById(id)
+                .orElseThrow(() -> new LeaseException("no lease " + id));
+
+        if (lease.state() != LeaseState.ACTIVE) {
+            throw new LeaseException("lease " + id + " is " + lease.state()
+                    + ", so it has no usable connection string");
+        }
+
+        String ciphertext = repository.claimCredential(id, Instant.now())
+                .orElseThrow(() -> new LeaseException("the connection string for lease " + id
+                        + " has already been collected. It is shown once and then destroyed; "
+                        + "rotate the lease to get a new one."));
+
+        String password = cipher.decrypt(ciphertext, id.toString());
+        String separator = lease.jdbcUrl().contains("?") ? "&" : "?";
+        return lease.jdbcUrl() + separator + "user=" + lease.username() + "&password=" + password;
+    }
+
+    /** Whether a lease's connection string is still waiting to be collected. */
+    public boolean hasUnclaimedCredential(UUID id) {
+        return repository.hasUnclaimedCredential(id);
     }
 
     public Optional<Lease> find(UUID id) {

@@ -26,12 +26,14 @@ public class LeaseRepository {
      * Inserts a lease. The plaintext password is never written; only a digest,
      * so a control-plane dump cannot be used to connect to a live database.
      */
-    public void insert(Lease lease, String passwordDigest) {
+    public void insert(Lease lease, String passwordDigest, String credentialCiphertext) {
         jdbc.sql("""
                         INSERT INTO lease (id, dataset_id, database_name, jdbc_url, username,
-                                           password_digest, holder, state, renewals, issued_at, expires_at)
+                                           password_digest, credential_ciphertext, holder, state,
+                                           renewals, issued_at, expires_at)
                         VALUES (:id, :datasetId, :databaseName, :jdbcUrl, :username,
-                                :digest, :holder, :state, :renewals, :issuedAt, :expiresAt)
+                                :digest, :ciphertext, :holder, :state,
+                                :renewals, :issuedAt, :expiresAt)
                         """)
                 .param("id", lease.id())
                 .param("datasetId", lease.datasetId())
@@ -39,6 +41,7 @@ public class LeaseRepository {
                 .param("jdbcUrl", lease.jdbcUrl())
                 .param("username", lease.username())
                 .param("digest", passwordDigest)
+                .param("ciphertext", credentialCiphertext)
                 .param("holder", lease.holder())
                 .param("state", lease.state().name())
                 .param("renewals", lease.renewals())
@@ -129,6 +132,68 @@ public class LeaseRepository {
                 .param("expiry", java.sql.Timestamp.from(newExpiry))
                 .param("id", id)
                 .update() == 1;
+    }
+
+    /**
+     * Hands out the stored credential exactly once.
+     *
+     * <p>The read and the clear are a single UPDATE ... RETURNING, so two
+     * concurrent claims cannot both succeed: whichever statement matches the
+     * {@code IS NOT NULL} predicate first takes the ciphertext, and the other
+     * matches nothing. Doing it as a SELECT then an UPDATE would leave a window
+     * where both callers see the same credential.
+     *
+     * @return the ciphertext, or empty when it has already been claimed or the
+     *         lease is no longer active
+     */
+    public Optional<String> claimCredential(UUID id, Instant at) {
+        // RETURNING reports post-update values, so clearing the column and
+        // returning it in one statement would always yield NULL. The locking
+        // subquery snapshots the ciphertext before the SET touches it, and its
+        // FOR UPDATE serialises concurrent claims so the second one re-reads a
+        // cleared column and matches nothing.
+        return jdbc.sql("""
+                        UPDATE lease AS l
+                        SET credential_ciphertext = NULL, credential_claimed_at = :at
+                        FROM (
+                            SELECT id, credential_ciphertext
+                            FROM lease
+                            WHERE id = :id
+                            FOR UPDATE
+                        ) AS prior
+                        WHERE l.id = prior.id
+                          AND l.state = 'ACTIVE'
+                          AND prior.credential_ciphertext IS NOT NULL
+                        RETURNING prior.credential_ciphertext AS claimed
+                        """)
+                .param("at", java.sql.Timestamp.from(at))
+                .param("id", id)
+                .query(String.class)
+                .optional();
+    }
+
+    /** Replaces the stored credential, used when a lease's password is rotated. */
+    public boolean replaceCredential(UUID id, String passwordDigest, String credentialCiphertext) {
+        return jdbc.sql("""
+                        UPDATE lease
+                        SET password_digest = :digest, credential_ciphertext = :ciphertext,
+                            credential_claimed_at = NULL
+                        WHERE id = :id AND state = 'ACTIVE'
+                        """)
+                .param("digest", passwordDigest)
+                .param("ciphertext", credentialCiphertext)
+                .param("id", id)
+                .update() == 1;
+    }
+
+    /** Whether a lease's credential is still waiting to be collected. */
+    public boolean hasUnclaimedCredential(UUID id) {
+        return Boolean.TRUE.equals(jdbc.sql(
+                        "SELECT credential_ciphertext IS NOT NULL FROM lease WHERE id = :id")
+                .param("id", id)
+                .query(Boolean.class)
+                .optional()
+                .orElse(false));
     }
 
     public int countActive() {

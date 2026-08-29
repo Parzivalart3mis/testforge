@@ -1,0 +1,30 @@
+# Integration test profile. The datasource is supplied by the Testcontainers
+# @ServiceConnection, so nothing here names a host.
+spring:
+  flyway:
+    enabled: true
+    clean-disabled: false
+
+testforge:
+  masking:
+    key: integration-test-masking-key
+  jobs:
+    backend: memory
+  snapshots:
+    backend: filesystem
+    directory: ${java.io.tmpdir}/testforge-test-snapshots
+  generation:
+    default-scale: 20
+    batch-size: 100
+  leases:
+    default-ttl: PT1H
+    max-ttl: PT4H
+    reaper-interval: PT1H
+    orphan-sweep-interval: PT1H
+  targets: []
+
+logging:
+  level:
+    com.helios.testforge: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN

@@ -24,9 +24,11 @@ spring:
       enabled: true
 
   jackson:
+    # Jackson 3 writes temporals as ISO-8601 by default, so the
+    # write-dates-as-timestamps override Jackson 2 needed is both unnecessary
+    # and no longer a SerializationFeature. JacksonDateFormatIT pins the
+    # behaviour so an upgrade cannot change it silently.
     default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
 
 server:
   port: ${PORT:8080}
