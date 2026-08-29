@@ -1,0 +1,127 @@
+# ---------------------------------------------------------------------------
+# TestForge — repository ignore rules
+# ---------------------------------------------------------------------------
+
+# --- Java / Maven ---------------------------------------------------------
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+*.class
+*.jar
+!.mvn/wrapper/*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+
+# --- Node / Angular -------------------------------------------------------
+node_modules/
+dist/
+.angular/
+.nx/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+coverage/
+.vercel/
+.next/
+
+# --- Terraform ------------------------------------------------------------
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!example.tfvars
+!terraform.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+.terraform.lock.hcl.bak
+tfplan
+*.tfplan
+
+# --- Secrets / local config ----------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+!**/src/test/resources/**/*.key
+credentials
+.aws/
+secrets/
+application-local.yml
+application-local.yaml
+application-local.properties
+application-secrets.yml
+
+# --- Test / build artifacts ----------------------------------------------
+*.log
+logs/
+surefire-reports/
+failsafe-reports/
+jacoco.exec
+jacoco-it.exec
+.testcontainers/
+testforge-snapshots/
+/tmp/
+*.hprof
+
+# --- IDE ------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.settings/
+.project
+.classpath
+.factorypath
+.apt_generated/
+nbproject/private/
+*.sublime-workspace
+*.sublime-project
+
+# --- OS -------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+*~
+.directory
+
+# --- Misc -----------------------------------------------------------------
+.claude/
+scratch/
+*.orig
+*.rej
+*.bak
+*.swp
+*.swo
