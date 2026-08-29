@@ -1,0 +1,155 @@
+spring:
+  application:
+    name: testforge-service
+
+  # Control plane: dataset requests, schema snapshots, leases, audit.
+  datasource:
+    url: ${TESTFORGE_DB_URL:jdbc:postgresql://localhost:5432/testforge}
+    username: ${TESTFORGE_DB_USER:testforge}
+    password: ${TESTFORGE_DB_PASSWORD:testforge}
+    hikari:
+      pool-name: testforge-control
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 10000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  threads:
+    virtual:
+      enabled: true
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: always
+    include-binding-errors: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+logging:
+  level:
+    root: INFO
+    com.helios.testforge: DEBUG
+    org.flywaydb: INFO
+
+testforge:
+  generation:
+    default-scale: 100
+    max-rows-per-table: 1000000
+    max-total-rows: 20000000
+    batch-size: 1000
+    fanout-min: 1
+    fanout-max: 5
+
+  masking:
+    # Overridden from Secrets Manager in deployed environments. A blank key makes
+    # the service refuse to start rather than mask with a guessable default.
+    key: ${TESTFORGE_MASKING_KEY:}
+    mask-sensitive-by-default: true
+    redaction-token: "[REDACTED]"
+
+  ephemeral:
+    admin-jdbc-url: ${TESTFORGE_EPHEMERAL_URL:jdbc:postgresql://localhost:5432/postgres}
+    admin-username: ${TESTFORGE_EPHEMERAL_USER:postgres}
+    admin-password: ${TESTFORGE_EPHEMERAL_PASSWORD:postgres}
+    client-host: ${TESTFORGE_EPHEMERAL_HOST:localhost}
+    client-port: ${TESTFORGE_EPHEMERAL_PORT:5432}
+    database-prefix: tf_
+    max-databases: 50
+
+  leases:
+    default-ttl: PT4H
+    max-ttl: PT24H
+    renew-by: PT2H
+    reaper-interval: PT1M
+    reap-grace: PT5M
+
+  jobs:
+    backend: ${TESTFORGE_JOBS_BACKEND:memory}
+    table-name: ${TESTFORGE_JOBS_TABLE:testforge-jobs}
+    workers: 4
+
+  snapshots:
+    backend: ${TESTFORGE_SNAPSHOTS_BACKEND:filesystem}
+    bucket: ${TESTFORGE_SNAPSHOTS_BUCKET:}
+    prefix: datasets/
+    directory: ${TESTFORGE_SNAPSHOTS_DIR:./testforge-snapshots}
+
+  targets: []
+
+---
+# Local development: in-memory job state, snapshots on disk, demo target wired
+# to the same PostgreSQL instance the control plane uses.
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+testforge:
+  masking:
+    key: dev-only-masking-key-not-for-deployed-environments
+  jobs:
+    backend: memory
+  snapshots:
+    backend: filesystem
+  targets:
+    - id: demo-commerce
+      display-name: "Demo Commerce (22 tables)"
+      jdbc-url: ${TESTFORGE_DEMO_URL:jdbc:postgresql://localhost:5432/testforge_demo}
+      username: ${TESTFORGE_DEMO_USER:testforge}
+      password: ${TESTFORGE_DEMO_PASSWORD:testforge}
+      schema: public
+
+logging:
+  level:
+    com.helios.testforge: DEBUG
+
+---
+# Deployed on ECS: job state in DynamoDB, snapshots in S3.
+spring:
+  config:
+    activate:
+      on-profile: aws
+
+testforge:
+  jobs:
+    backend: dynamodb
+  snapshots:
+    backend: s3
+
+logging:
+  level:
+    com.helios.testforge: INFO
