@@ -1,5 +1,6 @@
 package com.helios.testforge.generate;
 
+import com.helios.testforge.introspect.TypeMod;
 import com.helios.testforge.mask.Corpora;
 
 import java.math.BigDecimal;
@@ -35,19 +36,106 @@ public final class Generators {
     /** Datasets are centred on a fixed instant so a regenerated dataset is identical, not merely similar. */
     public static final LocalDate EPOCH = LocalDate.of(2026, 1, 1);
 
+    /** Base 36 packs the most distinct values per character into an ASCII-safe alphabet. */
+    private static final int RADIX = 36;
+
+    /** Below this width, a unique value cannot be both readable and distinct. */
+    private static final int MIN_READABLE_UNIQUE_LENGTH = 12;
+
     private Generators() {
     }
 
     // ------------------------------------------------------------- textual
 
+    /**
+     * An address whose local part is trimmed to fit rather than truncated after
+     * the fact. Truncating would cut the discriminator off the end, which is
+     * precisely the part that makes a unique column unique.
+     */
     public static ValueGenerator email(boolean unique, Integer maxLength) {
-        return truncated(maxLength, (random, rowIndex) -> {
+        return (random, rowIndex) -> {
             String given = Corpora.pick(Corpora.GIVEN_NAMES, random.nextLong()).toLowerCase(Locale.ROOT);
             String family = Corpora.pick(Corpora.FAMILY_NAMES, random.nextLong()).toLowerCase(Locale.ROOT);
             String domain = Corpora.pick(Corpora.EMAIL_DOMAINS, random.nextLong());
-            String discriminator = unique ? String.valueOf(rowIndex) : String.valueOf(random.nextInt(10_000));
-            return given + "." + family + discriminator + "@" + domain;
-        });
+            String discriminator = unique
+                    ? Integer.toString(rowIndex, RADIX)
+                    : Integer.toString(random.nextInt(1_000_000), RADIX);
+
+            String candidate = given + "." + family + discriminator + "@" + domain;
+            if (maxLength == null || candidate.length() <= maxLength) {
+                return candidate;
+            }
+            // Shrink the name, never the discriminator or the domain.
+            int fixed = discriminator.length() + 1 + domain.length();
+            int room = maxLength - fixed;
+            if (room < 1) {
+                // Nothing survives but the discriminator; the planner caps row
+                // counts for columns this narrow so it still stays unique.
+                return fit(discriminator + "@" + domain, maxLength);
+            }
+            String name = (given + family).substring(0, Math.min(room, (given + family).length()));
+            return name + discriminator + "@" + domain;
+        };
+    }
+
+    /**
+     * A value guaranteed distinct per row and guaranteed to fit.
+     *
+     * <p>Short unique columns - a {@code char(2)} country code, a {@code
+     * varchar(8)} reference - cannot carry a readable value and a distinct
+     * suffix at the same time, so below a readable threshold the value becomes
+     * a base-36 encoding of the row index and nothing else. That is ugly and
+     * correct, which beats readable and colliding.
+     */
+    public static ValueGenerator uniqueText(Integer maxLength) {
+        int length = maxLength == null ? 32 : maxLength;
+        if (length >= MIN_READABLE_UNIQUE_LENGTH) {
+            return (random, rowIndex) -> {
+                String suffix = Integer.toString(rowIndex, RADIX);
+                int room = length - suffix.length() - 1;
+                String word = Corpora.pick(Corpora.LOREM, random.nextLong());
+                String head = word.length() > room ? word.substring(0, room) : word;
+                return head + "-" + suffix;
+            };
+        }
+        return (random, rowIndex) -> {
+            String encoded = Integer.toString(rowIndex, RADIX);
+            if (encoded.length() >= length) {
+                // The planner caps row counts to the column's capacity, so this
+                // only trims leading zeroes that were never significant.
+                return encoded.substring(encoded.length() - length);
+            }
+            return "0".repeat(length - encoded.length()) + encoded;
+        };
+    }
+
+    /**
+     * How many distinct values a column can hold, so the planner can cap a
+     * table rather than discovering the ceiling as a constraint violation
+     * halfway through seeding.
+     *
+     * @return the capacity, or {@link Long#MAX_VALUE} when it is effectively unbounded
+     */
+    public static long uniqueCapacity(String udtName, Integer maxLength) {
+        String type = udtName == null ? "" : udtName.toLowerCase(Locale.ROOT);
+        return switch (type) {
+            case "int2" -> 32_767L;
+            case "bool" -> 2L;
+            case "varchar", "bpchar", "char" -> {
+                if (maxLength == null || maxLength <= 0) {
+                    yield Long.MAX_VALUE;
+                }
+                if (maxLength >= 13) {
+                    yield Long.MAX_VALUE;
+                }
+                long capacity = 1;
+                for (int i = 0; i < maxLength; i++) {
+                    capacity *= RADIX;
+                }
+                yield capacity;
+            }
+            default -> Long.MAX_VALUE;
+        };
     }
 
     public static ValueGenerator givenName(Integer maxLength) {
@@ -65,11 +153,13 @@ public final class Generators {
     }
 
     public static ValueGenerator username(boolean unique, Integer maxLength) {
-        return truncated(maxLength, (random, rowIndex) -> {
-            String base = Corpora.pick(Corpora.GIVEN_NAMES, random.nextLong()).toLowerCase(Locale.ROOT)
-                    + "_" + Corpora.pick(Corpora.LOREM, random.nextLong());
-            return unique ? base + rowIndex : base + random.nextInt(1_000);
-        });
+        if (unique) {
+            return uniqueText(maxLength);
+        }
+        return truncated(maxLength, (random, rowIndex) ->
+                Corpora.pick(Corpora.GIVEN_NAMES, random.nextLong()).toLowerCase(Locale.ROOT)
+                        + "_" + Corpora.pick(Corpora.LOREM, random.nextLong())
+                        + random.nextInt(1_000));
     }
 
     public static ValueGenerator phone(Integer maxLength) {
@@ -148,11 +238,12 @@ public final class Generators {
     }
 
     public static ValueGenerator slug(boolean unique, Integer maxLength) {
-        return truncated(maxLength, (random, rowIndex) -> {
-            String base = Corpora.pick(Corpora.LOREM, random.nextLong()) + "-"
-                    + Corpora.pick(Corpora.LOREM, random.nextLong());
-            return unique ? base + "-" + rowIndex : base;
-        });
+        if (unique) {
+            return uniqueText(maxLength);
+        }
+        return truncated(maxLength, (random, rowIndex) ->
+                Corpora.pick(Corpora.LOREM, random.nextLong()) + "-"
+                        + Corpora.pick(Corpora.LOREM, random.nextLong()));
     }
 
     public static ValueGenerator title(Integer maxLength) {
@@ -376,6 +467,33 @@ public final class Generators {
         };
     }
 
+    // ------------------------------------------------- constraint-respecting
+
+    /** An integer drawn from an inclusive range, for a column with a CHECK bound. */
+    public static ValueGenerator integerInRange(long min, long max, String udtName) {
+        long low = Math.min(min, max);
+        long high = Math.max(min, max);
+        long span = high - low + 1;
+        return (random, rowIndex) -> {
+            long value = low + Math.floorMod(random.nextLong(), span);
+            return switch (TypeMod.base(udtName)) {
+                case "int2" -> (short) value;
+                case "int8" -> value;
+                default -> (int) value;
+            };
+        };
+    }
+
+    /** A decimal drawn from an inclusive range at the column's scale. */
+    public static ValueGenerator decimalInRange(BigDecimal min, BigDecimal max, Integer scale) {
+        int digits = scale == null ? 2 : scale;
+        BigDecimal low = min.min(max);
+        BigDecimal span = max.max(min).subtract(low);
+        return (random, rowIndex) -> low
+                .add(span.multiply(BigDecimal.valueOf(random.nextDouble())))
+                .setScale(digits, RoundingMode.HALF_UP);
+    }
+
     // ------------------------------------------------------------- helpers
 
     /** Wraps a generator so its string output never exceeds the column's declared length. */
@@ -400,6 +518,14 @@ public final class Generators {
         int integerDigits = precision == null ? 9 : Math.max(1, precision - scale);
         int capped = Math.min(integerDigits + scale, 9);
         return (int) Math.pow(10, capped) - 1;
+    }
+
+    /** Trims to fit, keeping the tail - the end of a generated value carries its distinctness. */
+    static String fit(String value, Integer maxLength) {
+        if (maxLength == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(value.length() - maxLength);
     }
 
     /** UTF-8 length, used where a column's limit is in bytes rather than characters. */

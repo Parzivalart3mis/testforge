@@ -204,6 +204,7 @@ public class GenerationPlanner {
             }
 
             rows = capJunctionTable(table, graph, counts, rows, warnings);
+            rows = capToUniqueCapacity(table, rows, warnings);
             counts.put(ref, clamp(rows, maxPerTable, ref, warnings));
         }
         return counts;
@@ -239,6 +240,41 @@ public class GenerationPlanner {
         if (capped < requested) {
             warnings.add("Capped " + table.qualified() + " at " + capped + " rows: its primary key is made "
                     + "entirely of foreign keys, so it cannot hold more distinct rows than its parents allow.");
+            return capped;
+        }
+        return requested;
+    }
+
+    /**
+     * Caps a table at the number of distinct values its narrowest unique column
+     * can actually hold.
+     *
+     * <p>A {@code char(2) UNIQUE} country code has room for 1296 distinct
+     * values however many rows are asked for. Discovering that as a constraint
+     * violation halfway through seeding wastes the whole run, so it is decided
+     * here where it costs nothing and can be reported.
+     */
+    private int capToUniqueCapacity(TableMeta table, int requested, List<String> warnings) {
+        long capacity = Long.MAX_VALUE;
+        String limiting = null;
+
+        for (var unique : table.uniques()) {
+            if (unique.isComposite()) {
+                continue;
+            }
+            ColumnMeta column = table.requireColumn(unique.columns().getFirst());
+            long columnCapacity = Generators.uniqueCapacity(
+                    com.helios.testforge.introspect.TypeMod.base(column.udtName()), column.maxLength());
+            if (columnCapacity < capacity) {
+                capacity = columnCapacity;
+                limiting = column.name();
+            }
+        }
+
+        if (capacity < requested) {
+            int capped = (int) capacity;
+            warnings.add("Capped " + table.qualified() + " at " + capped + " rows: its unique column "
+                    + limiting + " cannot hold more distinct values than that.");
             return capped;
         }
         return requested;

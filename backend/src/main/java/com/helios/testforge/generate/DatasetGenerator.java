@@ -115,29 +115,25 @@ public class DatasetGenerator {
 
         MaskContext baseContext = MaskContext.forDataset(datasetId);
         List<Map<String, Object>> rows = new ArrayList<>(tablePlan.rowCount());
-        Set<List<Object>> seenKeys = new HashSet<>();
-        List<String> keyColumns = table.primaryKeyOpt().map(pk -> pk.columns()).orElse(List.of());
+        List<UniquenessGroup> uniqueness = uniquenessGroups(table);
 
         int collisions = 0;
         for (int rowIndex = 0; rowIndex < tablePlan.rowCount(); rowIndex++) {
             Map<String, Object> row = null;
 
             for (int attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
-                row = generateRow(table, tablePlan, generators, pool, seed, qualified,
-                        rowIndex, attempt, baseContext);
-                if (keyColumns.isEmpty()) {
-                    break;
-                }
-                List<Object> key = keyColumns.stream().map(row::get).toList();
-                if (key.contains(null) || seenKeys.add(key)) {
+                Map<String, Object> candidate = generateRow(table, tablePlan, generators, pool, seed,
+                        qualified, rowIndex, attempt, baseContext);
+                if (claim(uniqueness, candidate)) {
+                    row = candidate;
                     break;
                 }
                 collisions++;
-                row = null;
             }
 
             if (row == null) {
-                log.warn("Skipping row {} of {}: no unique primary key found in {} deterministic attempts",
+                log.warn("Skipping row {} of {}: no value satisfying every uniqueness constraint "
+                                + "was found in {} deterministic attempts",
                         rowIndex, qualified, MAX_KEY_RETRIES);
                 continue;
             }
@@ -146,9 +142,101 @@ public class DatasetGenerator {
         }
 
         if (collisions > 0) {
-            log.debug("{}: resolved {} primary key collisions by deterministic retry", qualified, collisions);
+            log.debug("{}: resolved {} uniqueness collisions by deterministic retry", qualified, collisions);
         }
         return rows;
+    }
+
+    /**
+     * Every uniqueness guarantee the table carries: its primary key, plus each
+     * UNIQUE constraint and unique index.
+     *
+     * <p>Tracking only the primary key is not enough, and the gap is not
+     * theoretical: a composite {@code UNIQUE (country_id, region)} collides
+     * within the first fifty rows at any realistic scale, and the failure
+     * arrives as an aborted batch a long way into the run.
+     */
+    private List<UniquenessGroup> uniquenessGroups(TableMeta table) {
+        List<UniquenessGroup> groups = new ArrayList<>();
+        Set<List<String>> seen = new HashSet<>();
+
+        table.primaryKeyOpt().ifPresent(pk -> {
+            if (seen.add(pk.columns())) {
+                groups.add(new UniquenessGroup(pk.columns()));
+            }
+        });
+        for (var unique : table.uniques()) {
+            if (seen.add(unique.columns())) {
+                groups.add(new UniquenessGroup(unique.columns()));
+            }
+        }
+        return groups;
+    }
+
+    /**
+     * Reserves a row's values against every uniqueness group, all or nothing.
+     *
+     * <p>Checking every group before claiming any matters: a row that satisfies
+     * the primary key but collides on a secondary unique constraint must leave
+     * no trace, or the retry would find its own primary key already taken.
+     *
+     * @return true when the row was accepted
+     */
+    private boolean claim(List<UniquenessGroup> groups, Map<String, Object> row) {
+        List<List<Object>> keys = new ArrayList<>(groups.size());
+
+        for (UniquenessGroup group : groups) {
+            List<Object> key = group.keyOf(row);
+            // SQL treats NULLs as distinct, so a group containing one never
+            // conflicts and needs no tracking.
+            if (key == null) {
+                keys.add(null);
+                continue;
+            }
+            if (group.holds(key)) {
+                return false;
+            }
+            keys.add(key);
+        }
+
+        for (int i = 0; i < groups.size(); i++) {
+            if (keys.get(i) != null) {
+                groups.get(i).claim(keys.get(i));
+            }
+        }
+        return true;
+    }
+
+    /** One uniqueness constraint and the tuples already handed out for it. */
+    private static final class UniquenessGroup {
+
+        private final List<String> columns;
+        private final Set<List<Object>> claimed = new HashSet<>();
+
+        UniquenessGroup(List<String> columns) {
+            this.columns = List.copyOf(columns);
+        }
+
+        /** The row's values for this group, or null when any of them is NULL. */
+        List<Object> keyOf(Map<String, Object> row) {
+            List<Object> key = new ArrayList<>(columns.size());
+            for (String column : columns) {
+                Object value = row.get(column);
+                if (value == null) {
+                    return null;
+                }
+                key.add(value);
+            }
+            return key;
+        }
+
+        boolean holds(List<Object> key) {
+            return claimed.contains(key);
+        }
+
+        void claim(List<Object> key) {
+            claimed.add(key);
+        }
     }
 
     // ---------------------------------------------------------------- a row

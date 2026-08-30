@@ -39,6 +39,13 @@ public class MaskingEngine {
      */
     private static final int RESERVED_SSN_AREA = 900;
 
+    private static final java.util.regex.Pattern IPV4 =
+            java.util.regex.Pattern.compile("(\\d{1,3}\\.){3}\\d{1,3}(/\\d{1,2})?");
+    private static final java.util.regex.Pattern IPV6_HINT =
+            java.util.regex.Pattern.compile("[0-9a-fA-F:]+(/\\d{1,3})?");
+    private static final java.util.regex.Pattern MAC =
+            java.util.regex.Pattern.compile("([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}");
+
     private final Hmac hmac;
     private final String redactionToken;
 
@@ -122,6 +129,15 @@ public class MaskingEngine {
      * fixed-width format still validates.
      */
     private String partial(String value, MaskingRule rule, String[] parts) {
+        // A network address is structurally constrained in a way per-character
+        // substitution cannot respect: replacing the digits of 198.51.100.42
+        // happily produces 138.21.339.32, and inet rejects it. Route those to a
+        // masker that understands the format.
+        String network = maskNetworkAddress(value, parts);
+        if (network != null) {
+            return network;
+        }
+
         int keepPrefix = Math.max(0, rule == null ? 1 : rule.optionInt("keepPrefix", 1));
         int keepSuffix = Math.max(0, rule == null ? 1 : rule.optionInt("keepSuffix", 1));
 
@@ -133,6 +149,40 @@ public class MaskingEngine {
         String suffix = value.substring(value.length() - keepSuffix);
         String middle = derivedFiller(value.substring(keepPrefix, value.length() - keepSuffix), parts);
         return prefix + middle + suffix;
+    }
+
+    /**
+     * Masks an IP or MAC address into a valid one in a reserved range.
+     *
+     * <p>The output blocks are the ones reserved for documentation and testing -
+     * TEST-NET-1/2/3 for IPv4, 2001:db8::/32 for IPv6, and a locally-administered
+     * OUI for MAC - so a masked address is both well-formed and unmistakably not
+     * a real host. That matters here: test traffic aimed at a masked address
+     * should go nowhere rather than somewhere.
+     *
+     * @return the masked address, or null when the value is not one
+     */
+    private String maskNetworkAddress(String value, String[] parts) {
+        String trimmed = value.trim();
+
+        if (IPV4.matcher(trimmed).matches()) {
+            String[] blocks = {"192.0.2", "198.51.100", "203.0.113"};
+            String block = blocks[hmac.asInt(blocks.length, concat(parts, "block"))];
+            int host = 1 + hmac.asInt(254, concat(parts, "host"));
+            return block + "." + host;
+        }
+        if (MAC.matcher(trimmed).matches()) {
+            int[] digits = hmac.asDigits(10, concat(parts, "mac"));
+            return String.format("02:%x%x:%x%x:%x%x:%x%x:%x%x",
+                    digits[0], digits[1], digits[2], digits[3], digits[4],
+                    digits[5], digits[6], digits[7], digits[8], digits[9]);
+        }
+        if (trimmed.indexOf(':') >= 0 && IPV6_HINT.matcher(trimmed).matches()) {
+            return "2001:db8:" + hmac.asHex(4, concat(parts, "v6a"))
+                    + ":" + hmac.asHex(4, concat(parts, "v6b"))
+                    + "::" + hmac.asHex(4, concat(parts, "v6c"));
+        }
+        return null;
     }
 
     /**

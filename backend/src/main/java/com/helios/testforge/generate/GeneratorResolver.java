@@ -38,7 +38,13 @@ public class GeneratorResolver {
      */
     public ValueGenerator resolve(TableMeta table, ColumnMeta column) {
         boolean unique = table.isUniqueColumn(column.name());
-        ValueGenerator generator = resolveCore(column, unique);
+
+        // A CHECK constraint overrides the semantic choice. A `rating smallint`
+        // reads as a quantity and would be generated in the thousands; the
+        // constraint saying it must be 1 to 5 is the more specific fact, and it
+        // is the one the database will enforce.
+        ValueGenerator generator = constrained(table, column)
+                .orElseGet(() -> resolveCore(column, unique));
 
         // Unique columns never get NULLs injected: a second NULL would collide
         // under a UNIQUE constraint in most engines' interpretation, and it also
@@ -47,6 +53,42 @@ public class GeneratorResolver {
             return generator.nullableAt(NULL_RATE_PERCENT);
         }
         return generator;
+    }
+
+    /**
+     * A generator derived from the column's check constraints, when they say
+     * anything a generator can act on.
+     */
+    private java.util.Optional<ValueGenerator> constrained(TableMeta table, ColumnMeta column) {
+        if (table.checks().isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        CheckBounds.Bounds bounds = CheckBounds.interpret(table.checks()).get(column.name());
+        if (bounds == null) {
+            return java.util.Optional.empty();
+        }
+
+        if (bounds.hasAllowedValues() && isTextual(column)) {
+            return java.util.Optional.of(Generators.fromCorpus(bounds.allowed(), column.maxLength()));
+        }
+        if (!bounds.hasRange()) {
+            return java.util.Optional.empty();
+        }
+
+        return switch (TypeMod.base(column.udtName())) {
+            case "int2" -> java.util.Optional.of(Generators.integerInRange(
+                    bounds.minLong(1), bounds.maxLong(30_000), column.udtName()));
+            case "int4" -> java.util.Optional.of(Generators.integerInRange(
+                    bounds.minLong(1), bounds.maxLong(1_000_000), column.udtName()));
+            case "int8" -> java.util.Optional.of(Generators.integerInRange(
+                    bounds.minLong(1), bounds.maxLong(1_000_000_000L), column.udtName()));
+            case "numeric", "decimal", "float4", "float8", "money" -> java.util.Optional.of(
+                    Generators.decimalInRange(
+                            bounds.minDecimal(java.math.BigDecimal.ZERO),
+                            bounds.maxDecimal(java.math.BigDecimal.valueOf(100_000)),
+                            column.numericScale()));
+            default -> java.util.Optional.empty();
+        };
     }
 
     /** A short human-readable label for the chosen generator, shown in the plan. */
@@ -66,6 +108,18 @@ public class GeneratorResolver {
         }
         if (column.isArray()) {
             return arrayGenerator(column);
+        }
+        // A UNIQUE textual column overrides semantics entirely, except for email,
+        // which has a uniqueness-aware generator that still yields a valid
+        // address. Every other textual generator draws from a fixed corpus or
+        // truncates to fit, and either will eventually collide - which aborts
+        // the whole seed. Enumerating the safe classes was tried and was wrong:
+        // a char(2) iso_code fell through to the generic title generator and
+        // collided on the third row. Distinctness wins over realism here.
+        if (unique && isTextual(column)) {
+            return column.dataClass() == com.helios.testforge.domain.schema.DataClass.EMAIL
+                    ? Generators.email(true, column.maxLength())
+                    : Generators.uniqueText(column.maxLength());
         }
 
         Integer length = column.maxLength();
@@ -123,6 +177,14 @@ public class GeneratorResolver {
         return semantic != null ? semantic : byType(column, unique);
     }
 
+    /** Whether the column holds text, and so needs a text generator. */
+    private static boolean isTextual(ColumnMeta column) {
+        return switch (TypeMod.base(column.udtName())) {
+            case "text", "varchar", "bpchar", "char", "citext", "name" -> true;
+            default -> false;
+        };
+    }
+
     /** Falls back to the SQL type when the column's meaning is unknown. */
     private ValueGenerator byType(ColumnMeta column, boolean unique) {
         String type = TypeMod.base(column.udtName());
@@ -148,7 +210,7 @@ public class GeneratorResolver {
             case "inet", "cidr" -> Generators.ipv4();
             case "macaddr", "macaddr8" -> Generators.macAddress();
             case "text", "varchar", "bpchar", "char", "citext", "name" ->
-                    unique ? Generators.slug(true, length) : Generators.genericText(length);
+                    unique ? Generators.uniqueText(length) : Generators.genericText(length);
             default -> unsupported(column);
         };
     }
