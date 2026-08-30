@@ -6,8 +6,8 @@ graph, generates referentially consistent synthetic rows, masks the PII
 deterministically, seeds it into an ephemeral database, and hands back a
 connection string under a TTL lease.
 
-**[Live demo](https://testforge.vercel.app)** &middot; runs entirely in your
-browser, no backend required.
+**Live demo:** _deploy `console/` to Vercel and put the URL here._ It runs
+entirely in the browser, with no backend required.
 
 ---
 
@@ -96,7 +96,7 @@ console/    Angular console, and a TypeScript port of the engine for the demo
 | --- | --- |
 | Service | Java 21, Spring Boot 4.1, Flyway, PostgreSQL |
 | Console | Angular 22, standalone components, signals, zoneless |
-| Tests | 142 unit, 52 integration (Testcontainers), 45 console |
+| Tests | 142 unit, 52 integration (Testcontainers), 51 console |
 
 ## Running it
 
