@@ -1,0 +1,263 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Schemas</h1>
+      <p>
+        TestForge only ever reads a target's catalog &mdash; it learns the shape of the data and
+        never reads a row of it, which is what makes pointing a target at a production replica
+        reasonable.
+      </p>
+    </div>
+    <div class="row">
+      @if (targets().length > 0) {
+        <select
+          style="width: auto; min-width: 200px"
+          [value]="activeTarget()"
+          (change)="select($any($event.target).value)"
+        >
+          @for (target of targets(); track target.id) {
+            <option [value]="target.id">{{ target.displayName }}</option>
+          }
+        </select>
+      }
+      <button (click)="refresh()" [disabled]="refreshing()">
+        @if (refreshing()) {
+          <span class="spin"></span>
+        } @else {
+          Re-introspect
+        }
+      </button>
+    </div>
+  </div>
+
+  @if (error(); as message) {
+    <div class="banner banner-danger">{{ message }}</div>
+  }
+
+  @if (loading()) {
+    <div class="empty"><span class="spin"></span></div>
+  } @else if (!snapshot()) {
+    <div class="empty">
+      No schema loaded. Register a target under <code>testforge.targets</code> in the service
+      configuration.
+    </div>
+  } @else {
+    @let s = snapshot()!;
+    @let g = graph();
+
+    <div class="grid grid-4" style="margin-bottom: 16px">
+      <div class="stat">
+        <div class="stat-value">{{ s.tables.length }}</div>
+        <div class="stat-label">Tables</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ g?.edges?.length ?? 0 }}</div>
+        <div class="stat-label">Foreign keys</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ (g?.maxDepth ?? 0) + 1 }}</div>
+        <div class="stat-label">Dependency levels</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" [style.color]="sensitiveCount() > 0 ? 'var(--warn)' : null">
+          {{ sensitiveCount() }}
+        </div>
+        <div class="stat-label">Sensitive columns</div>
+      </div>
+    </div>
+
+    @if (g && g.cycles.length > 0) {
+      <div class="banner banner-warn">
+        <strong>{{ g.cycles.length }} foreign-key cycle(s) detected.</strong>
+        @for (cycle of g.cycles; track $index) {
+          <div class="mono" style="margin-top: 4px">{{ cycle.join(' -> ') }}</div>
+        }
+        <div style="margin-top: 6px">
+          Broken by deferring a nullable edge: those columns are seeded NULL and filled by a second
+          pass once both tables exist.
+        </div>
+      </div>
+    }
+
+    <!-- seed order -->
+    @if (g) {
+      <div class="card" style="margin-bottom: 16px">
+        <div class="card-title">
+          Seed order
+          <span class="spacer"></span>
+          <span class="faint" style="text-transform: none; letter-spacing: 0; font-weight: 400">
+            fingerprint <span class="tag">{{ g.fingerprint }}</span>
+          </span>
+        </div>
+        <div class="levels">
+          @for (level of levels(); track level.depth) {
+            <div class="level">
+              <div class="level-index">level {{ level.depth }}</div>
+              <div class="level-tables">
+                @for (table of level.tables; track table) {
+                  @let short = table.split('.')[1] ?? table;
+                  <span
+                    class="node"
+                    [class.on]="selected() === short"
+                    (click)="toggle(short)"
+                    [title]="table"
+                  >
+                    @if ((nodeByName().get(short)?.sensitiveColumns ?? 0) > 0) {
+                      <span class="dot"></span>
+                    }
+                    {{ short }}
+                  </span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+        <div class="hint" style="margin-top: 10px">
+          Every parent is seeded before its children, so foreign keys are satisfied at insert time.
+          Tables within one level have no dependency on each other. A dot marks a table holding
+          columns classified sensitive.
+        </div>
+      </div>
+    }
+
+    <div class="layout">
+      <!-- table list -->
+      <div class="card">
+        <div class="card-title">Tables</div>
+        <input
+          placeholder="filter tables and columns"
+          [value]="filter()"
+          (input)="onFilter($any($event.target).value)"
+          style="margin-bottom: 8px"
+        />
+        <div class="table-list">
+          @for (table of visibleTables(); track table.ref.name) {
+            @let node = nodeByName().get(table.ref.name);
+            <div
+              class="table-row"
+              [class.on]="selected() === table.ref.name"
+              (click)="toggle(table.ref.name)"
+            >
+              <span class="order-badge">{{ node?.seedOrder ?? '' }}</span>
+              <span class="table-row-name">{{ table.ref.name }}</span>
+              @if ((node?.sensitiveColumns ?? 0) > 0) {
+                <span class="pill pill-warn" style="font-size: 10px">
+                  {{ node?.sensitiveColumns }} PII
+                </span>
+              }
+              <span class="faint mono" style="font-size: 11px">{{ table.columns.length }}c</span>
+            </div>
+          }
+          @if (visibleTables().length === 0) {
+            <div class="empty faint">Nothing matches that filter.</div>
+          }
+        </div>
+      </div>
+
+      <!-- table detail -->
+      <div class="card">
+        @if (!selectedTable()) {
+          <div class="empty">Select a table to see its columns, keys and constraints.</div>
+        } @else {
+          @let t = selectedTable()!;
+          <div class="card-title">
+            {{ t.ref.schema }}.{{ t.ref.name }}
+            <span class="spacer"></span>
+            @if (nodeByName().get(t.ref.name); as node) {
+              <span class="faint" style="text-transform: none; letter-spacing: 0; font-weight: 400">
+                seed order {{ node.seedOrder }} &middot; depth {{ node.depth }} &middot; referenced
+                by {{ node.referencedBy }}
+              </span>
+            }
+          </div>
+
+          @if (t.comment) {
+            <div class="muted" style="margin-bottom: 10px; font-size: 12.5px">{{ t.comment }}</div>
+          }
+
+          <div class="table-wrap">
+            <table class="column-table">
+              <thead>
+                <tr>
+                  <th>Column</th>
+                  <th>Type</th>
+                  <th>Class</th>
+                  <th>Keys</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (column of t.columns; track column.name) {
+                  <tr>
+                    <td class="col-name">
+                      {{ column.name }}
+                      @if (!column.nullable) {
+                        <span class="faint" title="NOT NULL">*</span>
+                      }
+                    </td>
+                    <td class="col-type">
+                      {{ column.formattedType }}
+                      @if (column.generated) {
+                        <span class="tag">generated</span>
+                      } @else if (column.identity) {
+                        <span class="tag">identity</span>
+                      } @else if (column.serial) {
+                        <span class="tag">serial</span>
+                      }
+                    </td>
+                    <td class="faint" style="font-size: 11px">{{ column.dataClass }}</td>
+                    <td>
+                      @if (t.primaryKey && t.primaryKey.columns.includes(column.name)) {
+                        <span class="key-badge key-pk">PK</span>
+                      }
+                      @for (fk of t.foreignKeys; track fk.name) {
+                        @if (fk.childColumns.includes(column.name)) {
+                          <span class="key-badge key-fk" [title]="fk.name">
+                            FK &rarr; {{ fk.parent.name }}
+                          </span>
+                        }
+                      }
+                      @for (uq of t.uniques; track uq.name) {
+                        @if (uq.columns.includes(column.name)) {
+                          <span class="key-badge key-uq" [title]="uq.name">UQ</span>
+                        }
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          @if (inboundEdges().length > 0) {
+            <div class="card-title" style="margin-top: 16px">
+              Referenced by {{ inboundEdges().length }} foreign key(s)
+            </div>
+            <div class="inset mono" style="font-size: 11.5px">
+              @for (edge of inboundEdges(); track edge.constraint) {
+                <div>
+                  {{ edge.from }}({{ edge.fromColumns.join(', ') }})
+                  @if (edge.deferred) {
+                    <span class="pill pill-warn" style="font-size: 10px">deferred</span>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          @if (t.checks.length > 0) {
+            <div class="card-title" style="margin-top: 16px">Check constraints</div>
+            <div class="inset mono" style="font-size: 11.5px">
+              @for (check of t.checks; track check.name) {
+                <div>{{ check.name }}: {{ check.expression }}</div>
+              }
+            </div>
+          }
+
+          <div class="row" style="margin-top: 16px">
+            <a class="btn" routerLink="/request">Request a dataset from this schema</a>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

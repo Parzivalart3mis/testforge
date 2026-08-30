@@ -1,0 +1,24 @@
+<header class="shell-header">
+  <a routerLink="/" class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">TestForge</span>
+    <span class="brand-sub">test data platform</span>
+  </a>
+
+  <nav>
+    @for (item of nav; track item.path) {
+      <a
+        [routerLink]="item.path"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: item.exact }"
+        >{{ item.label }}</a
+      >
+    }
+  </nav>
+
+  <a class="btn primary-link" routerLink="/request">New dataset</a>
+</header>
+
+<main>
+  <router-outlet />
+</main>

@@ -1,0 +1,136 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Leases</h1>
+      <p>
+        Every ephemeral database expires from the moment it exists, because nobody remembers to
+        clean up a database they were given. Extending is self-service; forgetting costs nothing.
+      </p>
+    </div>
+    <div class="row">
+      <div class="checkbox-row">
+        <input
+          id="showClosed"
+          type="checkbox"
+          [checked]="showClosed()"
+          (change)="showClosed.set($any($event.target).checked)"
+        />
+        <label for="showClosed">Show closed</label>
+      </div>
+      <button class="subtle" (click)="load()">Refresh</button>
+    </div>
+  </div>
+
+  @if (error(); as message) {
+    <div class="banner banner-danger">{{ message }}</div>
+  }
+  @if (notice(); as message) {
+    <div class="banner banner-ok">{{ message }}</div>
+  }
+
+  @if (loading()) {
+    <div class="empty"><span class="spin"></span></div>
+  } @else if (visible().length === 0) {
+    <div class="card">
+      <div class="empty">
+        @if (activeCount() === 0 && !showClosed()) {
+          No active leases. <a routerLink="/request">Request a dataset</a> to get one.
+        } @else {
+          Nothing to show.
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Database</th>
+            <th>Holder</th>
+            <th>State</th>
+            <th>Issued</th>
+            <th class="num">Expires</th>
+            <th class="num">Renewals</th>
+            <th style="width: 1%"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (lease of visible(); track lease.id) {
+            <tr>
+              <td>
+                <div class="mono">{{ lease.databaseName }}</div>
+                <div class="faint mono" style="font-size: 11px">{{ lease.jdbcUrl }}</div>
+                @if (revealed()[lease.id]; as connection) {
+                  <div class="inset" style="margin-top: 6px; border-color: var(--ok)">
+                    <div class="row" style="margin-bottom: 4px">
+                      <strong style="color: var(--ok); font-size: 11.5px">
+                        Shown once &mdash; copy it now
+                      </strong>
+                      <span class="spacer"></span>
+                      <button class="subtle" style="padding: 1px 6px" (click)="copy(connection)">
+                        Copy
+                      </button>
+                    </div>
+                    <code style="word-break: break-all">{{ connection }}</code>
+                  </div>
+                }
+              </td>
+              <td class="muted">{{ lease.holder }}</td>
+              <td><span [class]="leasePill(lease.state)">{{ lease.state }}</span></td>
+              <td class="muted">{{ lease.issuedAt | ago }}</td>
+              <td
+                class="num"
+                [style.color]="
+                  lease.state === 'ACTIVE' && lease.remainingSeconds < 3600 ? 'var(--warn)' : null
+                "
+              >
+                @if (lease.state === 'ACTIVE') {
+                  {{ lease.remainingSeconds | remaining }}
+                } @else {
+                  <span class="faint">&ndash;</span>
+                }
+              </td>
+              <td class="num mono faint">
+                {{ lease.renewals }}<span class="faint">/{{ lease.renewals + lease.renewalsRemaining }}</span>
+              </td>
+              <td>
+                @if (lease.state === 'ACTIVE') {
+                  <div class="row" style="flex-wrap: nowrap">
+                    @if (!revealed()[lease.id]) {
+                      <button
+                        class="subtle"
+                        (click)="reveal(lease)"
+                        [disabled]="busy() === lease.id"
+                        title="Collect the connection string; it is shown once"
+                      >
+                        Reveal
+                      </button>
+                    }
+                    <button
+                      (click)="renew(lease)"
+                      [disabled]="busy() === lease.id || lease.renewalsRemaining === 0"
+                      [title]="
+                        lease.renewalsRemaining === 0
+                          ? 'Renewal limit reached; request a new dataset instead'
+                          : 'Extend the lease'
+                      "
+                    >
+                      Renew
+                    </button>
+                    <button class="danger" (click)="release(lease)" [disabled]="busy() === lease.id">
+                      Release
+                    </button>
+                  </div>
+                } @else {
+                  <span class="faint" style="font-size: 11.5px">
+                    closed {{ lease.closedAt | ago }}
+                  </span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

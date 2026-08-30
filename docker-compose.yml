@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------
+# Local development stack.
+#
+# One PostgreSQL instance plays three roles that are separate in a deployed
+# environment: the control plane's metadata database, the demo target whose
+# schema gets introspected, and the cluster ephemeral databases are created on.
+# Collapsing them is fine locally and keeps the whole thing to one container.
+# ---------------------------------------------------------------------------
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: testforge-postgres
+    environment:
+      POSTGRES_USER: testforge
+      POSTGRES_PASSWORD: testforge
+      POSTGRES_DB: testforge
+    ports:
+      - "5432:5432"
+    volumes:
+      # Creates and populates the demo target on first start.
+      - ./backend/src/main/resources/db/demo:/docker-entrypoint-initdb.d/demo:ro
+      - ./scripts/init-demo.sh:/docker-entrypoint-initdb.d/10-init-demo.sh:ro
+      - testforge-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testforge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  testforge-pgdata:

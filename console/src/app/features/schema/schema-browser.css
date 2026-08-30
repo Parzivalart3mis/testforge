@@ -1,0 +1,151 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 940px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.table-list {
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+
+.table-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.table-row:hover {
+  background: var(--bg-hover);
+}
+
+.table-row.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.table-row-name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.order-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  min-width: 20px;
+  text-align: right;
+}
+
+/* --- the level view: tables that can be seeded together, in one band ----- */
+
+.levels {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.level {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.level-index {
+  flex: 0 0 62px;
+  padding-top: 3px;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.level-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+}
+
+.node {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-inset);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.node:hover {
+  border-color: var(--accent);
+}
+
+.node.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.node .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.column-table td {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.col-name {
+  font-family: var(--mono);
+}
+
+.col-type {
+  font-family: var(--mono);
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.key-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+
+.key-pk {
+  background: var(--accent-dim);
+  color: var(--accent-text);
+}
+
+.key-fk {
+  background: var(--info-dim);
+  color: var(--info);
+}
+
+.key-uq {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}

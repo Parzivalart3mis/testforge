@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TestForge</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Self-service test data platform: schema introspection, referentially consistent synthetic data, deterministic PII masking, ephemeral databases under a TTL lease."
+    />
+    <link rel="icon" href="favicon.ico" />
+    <script>
+      // Where the service lives. Set at deploy time so one static bundle can be
+      // pointed at a local service or a deployed one without rebuilding.
+      globalThis.__TESTFORGE_API__ = 'http://localhost:8080';
+    </script>
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
+</html>

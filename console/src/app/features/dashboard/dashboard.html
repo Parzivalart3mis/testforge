@@ -1,0 +1,175 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Overview</h1>
+      <p>
+        Request a dataset and TestForge introspects the target schema, orders its foreign-key graph,
+        generates referentially consistent rows, masks the PII, and hands back a connection string
+        under a TTL lease.
+      </p>
+    </div>
+    <div class="row">
+      <button class="subtle" (click)="load()">Refresh</button>
+      <a class="btn" routerLink="/request">New dataset</a>
+    </div>
+  </div>
+
+  @if (error(); as message) {
+    <div class="banner banner-danger">{{ message }}</div>
+  }
+
+  <div class="grid grid-4" style="margin-bottom: 18px">
+    <div class="stat">
+      <div class="stat-value">{{ stats()?.total ?? 0 }}</div>
+      <div class="stat-label">Datasets requested</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ stats()?.rowsGenerated | compact }}</div>
+      <div class="stat-label">Rows generated</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ activeLeases().length }}</div>
+      <div class="stat-label">Active leases</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">
+        @if (stats()?.avgDurationMs) {
+          {{ stats()!.avgDurationMs | duration }}
+        } @else {
+          &ndash;
+        }
+      </div>
+      <div class="stat-label">Median run</div>
+    </div>
+  </div>
+
+  @if (expiringSoon().length > 0) {
+    <div class="banner banner-warn">
+      {{ expiringSoon().length }}
+      {{ expiringSoon().length === 1 ? 'lease expires' : 'leases expire' }} within the hour. The
+      reaper drops the database at expiry &mdash;
+      <a routerLink="/leases">renew or release</a> before then.
+    </div>
+  }
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title">
+        Recent datasets
+        <span class="spacer"></span>
+        <a routerLink="/datasets" style="font-weight: 500; text-transform: none; letter-spacing: 0"
+          >All</a
+        >
+      </div>
+
+      @if (loading()) {
+        <div class="empty"><span class="spin"></span></div>
+      } @else if (datasets().length === 0) {
+        <div class="empty">
+          Nothing requested yet. <a routerLink="/request">Request a dataset</a> to get started.
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th class="num">Rows</th>
+                <th class="num">Masked</th>
+                <th class="num">Took</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (dataset of datasets(); track dataset.id) {
+                <tr>
+                  <td>
+                    <a [routerLink]="['/datasets', dataset.id]">{{ dataset.name }}</a>
+                    <div class="faint" style="font-size: 11.5px">
+                      {{ dataset.targetId }} &middot; {{ dataset.requestedBy }}
+                    </div>
+                  </td>
+                  <td><span [class]="statusPill(dataset.status)">{{ dataset.status }}</span></td>
+                  <td class="num mono">{{ dataset.totalRows | compact }}</td>
+                  <td class="num mono">{{ dataset.maskedColumns }}</td>
+                  <td class="num mono">{{ dataset.durationMs | duration }}</td>
+                  <td class="muted">{{ dataset.createdAt | ago }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        Active leases
+        <span class="spacer"></span>
+        <a routerLink="/leases" style="font-weight: 500; text-transform: none; letter-spacing: 0"
+          >Manage</a
+        >
+      </div>
+
+      @if (activeLeases().length === 0) {
+        <div class="empty">No ephemeral databases are currently leased.</div>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Database</th>
+                <th>Holder</th>
+                <th>State</th>
+                <th class="num">Expires</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (lease of activeLeases(); track lease.id) {
+                <tr>
+                  <td class="mono truncate">{{ lease.databaseName }}</td>
+                  <td class="muted truncate">{{ lease.holder }}</td>
+                  <td><span [class]="leasePill(lease.state)">{{ lease.state }}</span></td>
+                  <td
+                    class="num"
+                    [class.pill-warn]="lease.remainingSeconds < 3600"
+                    [style.color]="lease.remainingSeconds < 3600 ? 'var(--warn)' : null"
+                  >
+                    {{ lease.remainingSeconds | remaining }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 14px">
+    <div class="card-title">Registered targets</div>
+    @if (targets().length === 0) {
+      <div class="empty">
+        No targets are registered. Add one under <code>testforge.targets</code> in the service
+        configuration.
+      </div>
+    } @else {
+      <div class="grid grid-3">
+        @for (target of targets(); track target.id) {
+          <a
+            class="inset"
+            [routerLink]="['/schemas', target.id]"
+            style="display: block; color: inherit"
+          >
+            <div style="font-weight: 600">{{ target.displayName }}</div>
+            <div class="mono faint" style="margin-top: 3px">{{ target.jdbcUrl }}</div>
+            <div class="faint" style="margin-top: 3px; font-size: 11.5px">
+              schema <span class="tag">{{ target.schema }}</span>
+            </div>
+          </a>
+        }
+      </div>
+    }
+  </div>
+</div>

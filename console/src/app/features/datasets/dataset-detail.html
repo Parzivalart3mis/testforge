@@ -1,0 +1,193 @@
+<div class="page">
+  @if (error(); as message) {
+    <div class="banner banner-danger">{{ message }}</div>
+  }
+
+  @if (!dataset()) {
+    <div class="empty"><span class="spin"></span></div>
+  } @else {
+    @let d = dataset()!;
+
+    <div class="page-header">
+      <div>
+        <h1>{{ d.name }}</h1>
+        <p>
+          {{ d.description || 'No description.' }}
+          <br />
+          <span class="faint">
+            {{ d.targetId }}.{{ d.schema }} &middot; requested by {{ d.requestedBy }} &middot;
+            {{ d.createdAt | ago }}
+          </span>
+        </p>
+      </div>
+      <div class="row">
+        <span [class]="statusPill(d.status)">{{ d.status }}</span>
+        <button (click)="regenerate()" [disabled]="regenerating() || !d.plan">
+          @if (regenerating()) {
+            <span class="spin"></span>
+          } @else {
+            Regenerate
+          }
+        </button>
+      </div>
+    </div>
+
+    @if (d.error; as failure) {
+      <div class="banner banner-danger">
+        <strong>This run failed</strong>
+        <div class="mono" style="margin-top: 6px; white-space: pre-wrap">{{ failure }}</div>
+      </div>
+    }
+
+    <div class="grid grid-4" style="margin-bottom: 16px">
+      <div class="stat">
+        <div class="stat-value">{{ d.totalRows | compact }}</div>
+        <div class="stat-label">Rows seeded</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ d.plan?.tables?.length ?? 0 }}</div>
+        <div class="stat-label">Tables</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ d.maskedColumns }}</div>
+        <div class="stat-label">Masked columns</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ d.durationMs | duration }}</div>
+        <div class="stat-label">Duration</div>
+      </div>
+    </div>
+
+    <!-- reproducibility -->
+    <div class="card" style="margin-bottom: 16px">
+      <div class="card-title">Reproducibility</div>
+      <div class="row" style="gap: 24px">
+        <div>
+          <div class="faint" style="font-size: 11.5px">Seed</div>
+          <div class="mono">{{ d.seed }}</div>
+        </div>
+        <div>
+          <div class="faint" style="font-size: 11.5px">Schema fingerprint</div>
+          <div class="mono">{{ d.plan?.snapshotFingerprint ?? '-' }}</div>
+        </div>
+        <div>
+          <div class="faint" style="font-size: 11.5px">Scale</div>
+          <div class="mono">{{ d.scale }}</div>
+        </div>
+        @if (d.snapshotUri) {
+          <div>
+            <div class="faint" style="font-size: 11.5px">Snapshot</div>
+            <div class="mono truncate" [title]="d.snapshotUri">{{ d.snapshotUri }}</div>
+          </div>
+        }
+      </div>
+      <div class="hint" style="margin-top: 8px">
+        Regenerating replays this request with this seed. Provided the target schema still has the
+        same fingerprint, the result is identical value for value, masked values included.
+      </div>
+    </div>
+
+    <!-- lease -->
+    @if (lease(); as l) {
+      <div class="card" style="margin-bottom: 16px">
+        <div class="card-title">Lease</div>
+        <div class="row">
+          <div style="flex: 1">
+            <div class="mono">{{ l.databaseName }}</div>
+            <div class="faint mono" style="font-size: 11.5px">{{ l.jdbcUrl }}</div>
+          </div>
+          <span [class]="leasePill(l.state)">{{ l.state }}</span>
+          <a class="btn" routerLink="/leases">Manage</a>
+        </div>
+      </div>
+    }
+
+    <!-- masking -->
+    <div class="card" style="margin-bottom: 16px">
+      <div class="card-title">Masking record</div>
+
+      @if (unmasked().length > 0) {
+        <div class="banner banner-warn">
+          <strong>{{ unmasked().length }} sensitive column(s) were seeded unmasked.</strong>
+          An explicit rule overrode the sensitivity default for these.
+        </div>
+      }
+
+      @if (masking().length === 0) {
+        <div class="empty faint">No masking was recorded for this dataset.</div>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Column</th>
+                <th>Class</th>
+                <th>Strategy</th>
+                <th>Because</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (record of masking(); track record.table + '.' + record.column) {
+                <tr>
+                  <td class="mono">{{ record.table }}.{{ record.column }}</td>
+                  <td class="faint" style="font-size: 11.5px">{{ record.dataClass }}</td>
+                  <td><span [class]="maskPill(record.strategy)">{{ record.strategy }}</span></td>
+                  <td class="muted" style="font-size: 12px">{{ record.ruleSource }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+
+    <!-- plan -->
+    @if (d.plan; as plan) {
+      @if (plan.warnings.length > 0) {
+        <div class="banner banner-info">
+          <strong>Plan notes</strong>
+          <ul style="margin: 6px 0 0; padding-left: 18px">
+            @for (warning of plan.warnings; track warning) {
+              <li style="font-size: 12.5px">{{ warning }}</li>
+            }
+          </ul>
+        </div>
+      }
+
+      <div class="card">
+        <div class="card-title">Seed order</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 34px">#</th>
+                <th>Table</th>
+                <th class="num">Rows</th>
+                <th class="num">Depth</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (table of plan.tables; track table.table.name) {
+                <tr>
+                  <td class="num faint mono">{{ table.order }}</td>
+                  <td class="mono">{{ table.table.name }}</td>
+                  <td class="num mono">{{ table.rowCount | compact }}</td>
+                  <td class="num mono faint">{{ table.depth }}</td>
+                  <td>
+                    @if (table.deferredEdges.length > 0) {
+                      <span class="pill pill-warn">cycle broken</span>
+                    }
+                    @if (table.selfEdges.length > 0) {
+                      <span class="pill pill-muted">self-ref</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+  }
+</div>

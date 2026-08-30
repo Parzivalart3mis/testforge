@@ -1,0 +1,133 @@
+<div class="page">
+  @if (!job()) {
+    @if (error(); as message) {
+      <div class="banner banner-danger">{{ message }}</div>
+    } @else {
+      <div class="empty"><span class="spin"></span></div>
+    }
+  } @else {
+    @let j = job()!;
+
+    <div class="page-header">
+      <div>
+        <h1>{{ j.phaseLabel }}</h1>
+        <p>
+          Job <span class="tag">{{ j.id }}</span> for
+          <a [routerLink]="['/datasets', j.datasetId]">dataset {{ j.datasetId.slice(0, 8) }}</a>
+          &middot; requested by {{ j.requestedBy }}
+        </p>
+      </div>
+      <span [class]="statusPill(j.status)">{{ j.status }}</span>
+    </div>
+
+    @if (error(); as message) {
+      <div class="banner banner-danger">{{ message }}</div>
+    }
+
+    <!-- progress -->
+    <div class="card" style="margin-bottom: 14px">
+      <div class="row" style="margin-bottom: 8px">
+        <strong style="font-size: 13px">{{ j.message || j.phaseLabel }}</strong>
+        <span class="spacer"></span>
+        <span class="mono muted">{{ j.percent }}%</span>
+        <span class="faint">&middot;</span>
+        <span class="mono muted">{{ j.elapsedMs | duration }}</span>
+        @if (j.status === 'RUNNING' || j.status === 'PENDING') {
+          <span class="spin"></span>
+        }
+      </div>
+      <div class="progress">
+        <div [class]="progressClass()" [style.width.%]="j.percent"></div>
+      </div>
+    </div>
+
+    @if (j.error; as failure) {
+      <div class="banner banner-danger">
+        <strong>Provisioning failed</strong>
+        <div class="mono" style="margin-top: 6px; white-space: pre-wrap">{{ failure }}</div>
+      </div>
+    }
+
+    <!-- connection string -->
+    @if (j.status === 'SUCCEEDED' && lease(); as activeLease) {
+      <div class="card" style="margin-bottom: 14px">
+        <div class="card-title">Connection</div>
+
+        @if (connectionString(); as connection) {
+          <div class="credential">
+            <div class="row" style="margin-bottom: 8px">
+              <strong style="color: var(--ok); font-size: 13px">
+                Copy this now &mdash; it is shown once
+              </strong>
+              <span class="spacer"></span>
+              <button (click)="copy()">{{ copied() ? 'Copied' : 'Copy' }}</button>
+            </div>
+            <code>{{ connection }}</code>
+          </div>
+          <div class="hint" style="margin-top: 8px">
+            The service has already destroyed its copy. If you lose this, release the lease and
+            request the dataset again.
+          </div>
+        } @else {
+          <div class="row">
+            <div style="flex: 1">
+              <div class="mono">{{ activeLease.databaseName }}</div>
+              <div class="faint" style="font-size: 12px">
+                Leased to {{ activeLease.holder }} &middot; expires
+                {{ activeLease.expiresAt | ago }}
+              </div>
+            </div>
+            <button class="primary" (click)="claim()" [disabled]="claiming()">
+              @if (claiming()) {
+                <span class="spin"></span>
+              } @else {
+                Reveal connection string
+              }
+            </button>
+          </div>
+          <div class="hint" style="margin-top: 8px">
+            Shown exactly once, then destroyed. A credential that can be fetched repeatedly ends up
+            in every log and browser history that touched it.
+          </div>
+        }
+      </div>
+    }
+
+    <div class="grid grid-2">
+      <!-- timeline -->
+      <div class="card">
+        <div class="card-title">Pipeline</div>
+        <div class="timeline">
+          @for (event of j.events; track $index) {
+            <div
+              class="event"
+              [class.current]="$last && j.status === 'RUNNING'"
+              [class.done]="$last && j.status === 'SUCCEEDED'"
+              [class.failed]="$last && j.status === 'FAILED'"
+            >
+              <div class="event-label">{{ event.label }}</div>
+              <div class="event-meta">{{ event.message }} &middot; {{ event.at | ago }}</div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- metrics -->
+      <div class="card">
+        <div class="card-title">Metrics</div>
+        @if (metrics().length === 0) {
+          <div class="empty faint">Nothing recorded yet.</div>
+        } @else {
+          <div class="metric-grid">
+            @for (metric of metrics(); track metric[0]) {
+              <div class="metric">
+                <div class="metric-value">{{ metric[1] }}</div>
+                <div class="metric-name">{{ metric[0] }}</div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

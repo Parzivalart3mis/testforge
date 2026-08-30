@@ -1,0 +1,282 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Request a dataset</h1>
+      <p>
+        Preview first: the plan shows the table order, the row counts, and every masking decision
+        with the reason it was made &mdash; before anything is provisioned.
+      </p>
+    </div>
+  </div>
+
+  @if (error(); as message) {
+    <div class="banner banner-danger">{{ message }}</div>
+  }
+
+  <div class="two-col">
+    <!-- ------------------------------------------------------------ form -->
+    <div class="card">
+      <div class="card-title">Request</div>
+
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" [(ngModel)]="name" placeholder="checkout fixtures" />
+      </div>
+
+      <div class="field">
+        <label for="requestedBy">Requested by</label>
+        <input id="requestedBy" [(ngModel)]="requestedBy" placeholder="you@example.com" />
+      </div>
+
+      <div class="field">
+        <label for="target">Target schema</label>
+        <select id="target" [(ngModel)]="targetId" (ngModelChange)="loadSchema()">
+          @for (target of targets(); track target.id) {
+            <option [value]="target.id">{{ target.displayName }}</option>
+          }
+        </select>
+        @if (schema(); as snapshot) {
+          <div class="hint">
+            {{ snapshot.tables.length }} tables &middot; fingerprint
+            <span class="tag">{{ snapshot.fingerprint }}</span>
+          </div>
+        }
+      </div>
+
+      <div class="row" style="gap: 12px">
+        <div class="field" style="flex: 1">
+          <label for="scale">Scale</label>
+          <input id="scale" type="number" min="1" max="100000" [(ngModel)]="scale" />
+          <div class="hint">Rows for tables with no parent; children fan out from these.</div>
+        </div>
+        <div class="field" style="flex: 1">
+          <label for="ttl">Lease TTL (minutes)</label>
+          <input id="ttl" type="number" min="5" max="1440" [(ngModel)]="ttlMinutes" />
+          <div class="hint">The reaper drops the database at expiry.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="seed">Seed <span class="faint">(optional)</span></label>
+        <input id="seed" type="number" [(ngModel)]="seed" placeholder="leave blank for a fresh one" />
+        <div class="hint">
+          Pinning a seed reproduces an earlier dataset value for value, masked values included.
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Tables &mdash; {{ selectionLabel() }}</label>
+        @if (tableNames().length === 0) {
+          <div class="inset faint">Select a target to load its tables.</div>
+        } @else {
+          <div class="table-picker">
+            @for (table of tableNames(); track table) {
+              <span class="table-chip" [class.on]="isSelected(table)" (click)="toggleTable(table)">
+                {{ table }}
+              </span>
+            }
+          </div>
+          <div class="hint">
+            Select none to include everything. Tables your selection depends on through NOT NULL
+            foreign keys are added automatically.
+            @if (selectedTables().size > 0) {
+              <button class="subtle" style="padding: 2px 6px" (click)="selectAll()">clear</button>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="field checkbox-row">
+        <input id="maskDefault" type="checkbox" [(ngModel)]="maskSensitiveByDefault" />
+        <label for="maskDefault">Mask columns classified sensitive</label>
+      </div>
+
+      <div class="field checkbox-row">
+        <input id="snapshot" type="checkbox" [(ngModel)]="exportSnapshot" />
+        <label for="snapshot">Export a snapshot bundle on completion</label>
+      </div>
+
+      @if (sensitiveColumns().length > 0) {
+        <div class="field">
+          <label>{{ sensitiveColumns().length }} columns classified sensitive</label>
+          <div class="sensitive-grid">
+            @for (column of sensitiveColumns(); track column.table + '.' + column.column) {
+              <span class="tag" [title]="column.dataClass"
+                >{{ column.table }}.{{ column.column }}</span
+              >
+            }
+          </div>
+        </div>
+      }
+
+      <div class="field">
+        <label>
+          Masking overrides
+          <button class="subtle" style="padding: 1px 6px; margin-left: 4px" (click)="addRule()">
+            + add
+          </button>
+        </label>
+        @if (rules().length === 0) {
+          <div class="hint">
+            None. Sensitive columns get the strategy matching their inferred class.
+          </div>
+        } @else {
+          @for (rule of rules(); track $index) {
+            <div class="rule-row">
+              <input
+                [value]="rule.table"
+                (input)="updateRule($index, { table: $any($event.target).value })"
+                placeholder="table or *"
+              />
+              <input
+                [value]="rule.column"
+                (input)="updateRule($index, { column: $any($event.target).value })"
+                placeholder="column or *"
+              />
+              <select
+                [value]="rule.strategy"
+                (change)="updateRule($index, { strategy: $any($event.target).value })"
+              >
+                @for (strategy of strategies; track strategy) {
+                  <option [value]="strategy">{{ strategy }}</option>
+                }
+              </select>
+              <button class="subtle" (click)="removeRule($index)" title="Remove">&times;</button>
+            </div>
+          }
+          <div class="hint">Globs are supported. The most specific matching rule wins.</div>
+        }
+      </div>
+
+      <div class="row" style="margin-top: 18px">
+        <button (click)="preview()" [disabled]="!canSubmit || previewing()">
+          @if (previewing()) {
+            <span class="spin"></span>
+          } @else {
+            Preview plan
+          }
+        </button>
+        <button class="primary" (click)="submit()" [disabled]="!canSubmit">
+          @if (submitting()) {
+            <span class="spin"></span>
+          } @else {
+            Provision
+          }
+        </button>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------ plan -->
+    <div class="card">
+      <div class="card-title">Generation plan</div>
+
+      @if (!plan()) {
+        <div class="empty">
+          Nothing planned yet. <strong>Preview plan</strong> introspects the target and works out
+          exactly what would be generated, without provisioning anything.
+        </div>
+      } @else {
+        @let p = plan()!;
+
+        <div class="grid grid-4" style="margin-bottom: 14px">
+          <div class="stat">
+            <div class="stat-value">{{ p.tables.length }}</div>
+            <div class="stat-label">Tables</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">{{ p.totalRows | compact }}</div>
+            <div class="stat-label">Rows</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">{{ p.maskedColumns }}</div>
+            <div class="stat-label">Masked columns</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value mono" style="font-size: 15px">{{ p.seed }}</div>
+            <div class="stat-label">Seed</div>
+          </div>
+        </div>
+
+        @if (p.warnings.length > 0) {
+          <div class="banner banner-warn">
+            <strong>{{ p.warnings.length }} note(s)</strong>
+            <ul class="warn-list" style="margin-top: 6px">
+              @for (warning of p.warnings; track warning) {
+                <li>{{ warning }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        <div class="table-wrap">
+          <table class="plan-table">
+            <thead>
+              <tr>
+                <th style="width: 34px">#</th>
+                <th>Table</th>
+                <th class="num">Rows</th>
+                <th>Depth</th>
+                <th class="num">Masked</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (table of p.tables; track table.table.name) {
+                <tr>
+                  <td class="num faint mono">{{ table.order }}</td>
+                  <td class="mono">{{ table.table.name }}</td>
+                  <td class="num mono">{{ table.rowCount | compact }}</td>
+                  <td>
+                    <span class="level-bar" [style.width.px]="4 + table.depth * 10"></span>
+                    <span class="faint" style="margin-left: 6px; font-size: 11px">{{ table.depth }}</span>
+                  </td>
+                  <td class="num mono">
+                    {{ table.columns | maskedCount }}
+                  </td>
+                  <td>
+                    @if (table.deferredEdges.length > 0) {
+                      <span class="pill pill-warn" title="Seeded NULL, filled by a second pass"
+                        >cycle broken</span
+                      >
+                    }
+                    @if (table.selfEdges.length > 0) {
+                      <span class="pill pill-muted">self-ref</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card-title" style="margin-top: 18px">Masking decisions</div>
+        <div class="table-wrap">
+          <table class="plan-table">
+            <thead>
+              <tr>
+                <th>Column</th>
+                <th>Class</th>
+                <th>Strategy</th>
+                <th>Because</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (table of p.tables; track table.table.name) {
+                @for (column of table.columns; track column.column) {
+                  @if (column.mask !== 'PRESERVE') {
+                    <tr>
+                      <td class="mono">{{ table.table.name }}.{{ column.column }}</td>
+                      <td class="faint" style="font-size: 11.5px">{{ column.dataClass }}</td>
+                      <td><span [class]="maskPill(column.mask)">{{ column.mask }}</span></td>
+                      <td class="muted" style="font-size: 12px">{{ column.maskSource }}</td>
+                    </tr>
+                  }
+                }
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
+</div>

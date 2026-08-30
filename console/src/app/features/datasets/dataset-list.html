@@ -1,0 +1,64 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Datasets</h1>
+      <p>
+        Every dataset stores the request that produced it and the seed it used, so any of these can
+        be reproduced value for value long after its lease expired.
+      </p>
+    </div>
+    <a class="btn" routerLink="/request">New dataset</a>
+  </div>
+
+  @if (error(); as message) {
+    <div class="banner banner-danger">{{ message }}</div>
+  }
+
+  <input
+    placeholder="filter by name, requester or target"
+    [value]="filter()"
+    (input)="filter.set($any($event.target).value)"
+    style="margin-bottom: 14px; max-width: 380px"
+  />
+
+  @if (loading()) {
+    <div class="empty"><span class="spin"></span></div>
+  } @else if (visible().length === 0) {
+    <div class="card">
+      <div class="empty">
+        No datasets yet. <a routerLink="/request">Request one</a> to get started.
+      </div>
+    </div>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Target</th>
+            <th>Requested by</th>
+            <th>Status</th>
+            <th class="num">Rows</th>
+            <th class="num">Masked</th>
+            <th class="num">Took</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (dataset of visible(); track dataset.id) {
+            <tr>
+              <td><a [routerLink]="['/datasets', dataset.id]">{{ dataset.name }}</a></td>
+              <td class="mono muted">{{ dataset.targetId }}</td>
+              <td class="muted">{{ dataset.requestedBy }}</td>
+              <td><span [class]="statusPill(dataset.status)">{{ dataset.status }}</span></td>
+              <td class="num mono">{{ dataset.totalRows | compact }}</td>
+              <td class="num mono">{{ dataset.maskedColumns }}</td>
+              <td class="num mono">{{ dataset.durationMs | duration }}</td>
+              <td class="muted">{{ dataset.createdAt | ago }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
