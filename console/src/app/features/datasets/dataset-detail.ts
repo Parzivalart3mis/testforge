@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { ApiError, TestForgeService } from '../../core/testforge.service';
+import { ApiError, SampleRows, TestForgeService } from '../../core/testforge.service';
 import { Dataset, Lease, MaskingRecord } from '../../core/api.types';
 import { AgoPipe, CompactPipe, DurationPipe, leasePill, maskPill, statusPill } from '../../core/format';
 
@@ -18,6 +18,8 @@ export class DatasetDetail {
   protected readonly dataset = signal<Dataset | null>(null);
   protected readonly masking = signal<MaskingRecord[]>([]);
   protected readonly lease = signal<Lease | null>(null);
+  protected readonly samples = signal<SampleRows[]>([]);
+  protected readonly selectedSample = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly regenerating = signal(false);
 
@@ -58,6 +60,32 @@ export class DatasetDetail {
         /* Not every dataset has a lease. */
       },
     });
+    // Only the browser engine can hand back rows; the service seeds them into a
+    // database instead, and the connection string is how you look at those.
+    this.api.sampleRows(id).subscribe({
+      next: (samples) => {
+        this.samples.set(samples);
+        if (samples.length > 0 && !this.selectedSample()) {
+          this.selectedSample.set(samples[0].table);
+        }
+      },
+      error: () => this.samples.set([]),
+    });
+  }
+
+  protected readonly activeSample = computed(() =>
+    this.samples().find((sample) => sample.table === this.selectedSample()) ?? null,
+  );
+
+  /** Renders a generated value the way a database client would show it. */
+  protected display(value: unknown): string {
+    if (value === null || value === undefined) {
+      return 'NULL';
+    }
+    if (Array.isArray(value)) {
+      return `{${value.join(', ')}}`;
+    }
+    return String(value);
   }
 
   /** Replays the stored request and seed, producing an identical dataset. */

@@ -91,3 +91,38 @@ nav a.active {
     display: none;
   }
 }
+
+.demo-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--info-dim);
+  color: var(--info);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.demo-note {
+  padding: 9px 28px;
+  background: var(--info-dim);
+  border-bottom: 1px solid var(--border);
+  color: #cbb6f5;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.demo-note a {
+  color: var(--info);
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .demo-pill {
+    display: none;
+  }
+
+  .demo-note {
+    padding: 9px 14px;
+  }
+}

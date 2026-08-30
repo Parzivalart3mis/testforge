@@ -16,8 +16,26 @@
     }
   </nav>
 
+  @if (isDemo) {
+    <span class="demo-pill" title="No backend is configured, so the console is running the engine itself">
+      browser demo
+    </span>
+  }
+
   <a class="btn primary-link" routerLink="/request">New dataset</a>
 </header>
+
+@if (isDemo) {
+  <div class="demo-note">
+    Running entirely in your browser &mdash; no backend, no database. The foreign-key ordering,
+    cycle breaking, generation plan, deterministic masking and the rows themselves are all
+    computed here, against a schema captured from the real introspector. Provisioning and seeding
+    are simulated: nothing is written anywhere and the connection strings are decorative.
+    <a href="https://github.com/Parzivalart3mis/testforge" target="_blank" rel="noreferrer">
+      The Spring service that does it for real is in the repo.
+    </a>
+  </div>
+}
 
 <main>
   <router-outlet />

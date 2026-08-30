@@ -1,59 +1,43 @@
-# Console
+# TestForge console
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.1.6.
+Angular 22, standalone components, signals, zoneless change detection, every
+feature lazily loaded.
 
-## Development server
+## Two backends
 
-To start a local development server, run:
+The console talks to an abstract `TestForgeService`, satisfied by either:
 
-```bash
-ng serve
-```
+- **`HttpBackend`** — the Spring service, when `__TESTFORGE_API__` is set in
+  `src/index.html`.
+- **`DemoBackend`** — the engine running in the browser, when it is not. This is
+  what the hosted demo uses.
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+The demo backend is a TypeScript port of the algorithms that matter: foreign-key
+ordering with cycle breaking, planning, deterministic HMAC masking, and
+referentially consistent row generation. It works against `demo-schema.json`, a
+fixture written by the real Java introspector rather than by hand, so it cannot
+drift from what introspection actually produces.
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+Regenerate the fixture after changing the demo schema:
 
 ```bash
-ng generate --help
+cd ../backend
+./mvnw verify -Dit.test=DemoFixtureWriterIT -Dtestforge.writeDemoFixture=true
 ```
 
-## Building
-
-To build the project run:
+## Commands
 
 ```bash
-ng build
+npm start                 # dev server on :4200
+npm test -- --no-watch    # vitest
+npm run build             # production bundle in dist/console/browser
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+## Deploying to Vercel
 
-## Running unit tests
+Set the project's root directory to `console/`. `vercel.json` supplies the build
+command, the output directory, the SPA rewrite and cache headers.
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+To point the deployed console at a running service instead of the browser
+engine, set `globalThis.__TESTFORGE_API__` in `src/index.html` to its URL, and
+add that origin to `testforge.cors.allowed-origins` on the service.

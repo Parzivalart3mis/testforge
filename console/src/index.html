@@ -11,9 +11,11 @@
     />
     <link rel="icon" href="favicon.ico" />
     <script>
-      // Where the service lives. Set at deploy time so one static bundle can be
-      // pointed at a local service or a deployed one without rebuilding.
-      globalThis.__TESTFORGE_API__ = 'http://localhost:8080';
+      // Where the Spring service lives. Left empty, the console runs the engine
+      // in the browser instead, which is how the hosted demo works. Point it at
+      // a running service to drive the real thing:
+      //   globalThis.__TESTFORGE_API__ = 'http://localhost:8080';
+      globalThis.__TESTFORGE_API__ = '';
     </script>
   </head>
   <body>

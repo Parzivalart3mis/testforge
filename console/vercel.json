@@ -5,7 +5,6 @@
   "framework": null,
   "rewrites": [
     {
-      "comment": "Client-side routing: every path that is not a real file serves the app shell.",
       "source": "/((?!assets/|.*\\.[a-zA-Z0-9]+$).*)",
       "destination": "/index.html"
     }
@@ -20,7 +19,6 @@
       ]
     },
     {
-      "comment": "Hashed bundles are immutable; index.html must never be cached.",
       "source": "/(.*)\\.(js|css|woff2)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },

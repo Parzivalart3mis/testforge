@@ -58,13 +58,18 @@ export interface Target {
 export interface ColumnMeta {
   name: string;
   position: number;
+  dataType: string;
   formattedType: string;
   udtName: string;
   nullable: boolean;
   maxLength: number | null;
+  numericPrecision: number | null;
+  numericScale: number | null;
   defaultExpression: string | null;
   identity: boolean;
+  identityGeneration: string | null;
   generated: boolean;
+  generationExpression: string | null;
   serial: boolean;
   enumLabels: string[];
   arrayElementType: string | null;

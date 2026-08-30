@@ -102,6 +102,67 @@
       </div>
     }
 
+    <!-- generated rows -->
+    @if (samples().length > 0) {
+      <div class="card" style="margin-bottom: 16px">
+        <div class="card-title">
+          Generated rows
+          <span class="spacer"></span>
+          <span class="faint" style="text-transform: none; letter-spacing: 0; font-weight: 400">
+            a sample; every foreign key below resolves to a row that exists
+          </span>
+        </div>
+
+        <div class="row" style="gap: 4px; margin-bottom: 10px">
+          @for (sample of samples(); track sample.table) {
+            <button
+              class="subtle"
+              [style.background]="selectedSample() === sample.table ? 'var(--accent-dim)' : null"
+              [style.color]="selectedSample() === sample.table ? 'var(--accent-text)' : null"
+              style="font-family: var(--mono); font-size: 11.5px; padding: 3px 8px"
+              (click)="selectedSample.set(sample.table)"
+            >
+              {{ sample.table }}
+            </button>
+          }
+        </div>
+
+        @if (activeSample(); as sample) {
+          <div class="table-wrap" style="max-height: 420px; overflow-y: auto">
+            <table>
+              <thead>
+                <tr>
+                  @for (column of sample.columns; track column) {
+                    <th>{{ column }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of sample.rows; track $index) {
+                  <tr>
+                    @for (column of sample.columns; track column) {
+                      <td
+                        class="mono"
+                        [class.faint]="row[column] === null"
+                        style="max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+                        [title]="display(row[column])"
+                      >
+                        {{ display(row[column]) }}
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top: 8px">
+            Showing {{ sample.rows.length }} of {{ sample.totalRows }} planned rows for
+            <span class="tag">{{ sample.table }}</span>.
+          </div>
+        }
+      </div>
+    }
+
     <!-- masking -->
     <div class="card" style="margin-bottom: 16px">
       <div class="card-title">Masking record</div>
