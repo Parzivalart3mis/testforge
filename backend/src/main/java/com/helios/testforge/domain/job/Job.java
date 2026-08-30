@@ -9,11 +9,12 @@ import java.util.UUID;
 /**
  * The state of one dataset provisioning run.
  *
- * <p>Jobs live in DynamoDB rather than the control-plane database. They are
- * written on every phase transition and polled by the console, which is a
- * high-frequency, single-key, short-lived access pattern — exactly what a
- * key-value store with a TTL attribute is for, and exactly what we do not want
- * competing with the metadata database for connections.
+ * <p>A job is live progress, not a system of record. It is written on every
+ * phase transition and polled by the console a couple of times a second, then
+ * becomes uninteresting the moment the run ends. The durable answer to what was
+ * requested and what was masked lives in the control-plane database; this is
+ * only the view of a run while it is happening, so it is held in memory and
+ * expires.
  *
  * @param id           job identity, surfaced to the requester immediately
  * @param datasetId    the dataset this run produces
@@ -28,7 +29,7 @@ import java.util.UUID;
  * @param error        failure detail, when {@code status} is FAILED
  * @param metrics      counters gathered during the run, e.g. rows per table
  * @param events       append-only phase transition log
- * @param expiresAt    DynamoDB TTL attribute — job records self-delete after retention
+ * @param expiresAt    when the record becomes eligible for eviction
  */
 public record Job(
         UUID id,
@@ -46,7 +47,7 @@ public record Job(
         List<JobEvent> events,
         Instant expiresAt) {
 
-    /** How long a finished job record is retained before DynamoDB's TTL reaps it. */
+    /** How long a finished job record is retained before it is evicted. */
     public static final Duration RETENTION = Duration.ofDays(14);
 
     public Job {

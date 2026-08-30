@@ -3,7 +3,6 @@ package com.helios.testforge.job;
 import com.helios.testforge.domain.job.Job;
 import com.helios.testforge.domain.job.JobPhase;
 import com.helios.testforge.domain.job.JobStatus;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -19,15 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Job state in memory, for local runs and tests.
+ * Job state in memory.
  *
- * <p>Bounded rather than unbounded: a long-lived local instance would otherwise
- * accumulate every job it ever ran. The eviction mirrors DynamoDB's TTL — oldest
- * terminal jobs go first — so behaviour between the two backends stays similar
- * enough that a bug found locally is a bug in production too.
+ * <p>Bounded rather than unbounded: a long-lived instance would otherwise
+ * accumulate every job it ever ran. Eviction takes the oldest finished jobs
+ * first and never touches a running one, so a busy period cannot lose the
+ * progress of a run someone is currently watching.
  */
 @Component
-@ConditionalOnProperty(name = "testforge.jobs.backend", havingValue = "memory", matchIfMissing = true)
 public class InMemoryJobStore implements JobStore {
 
     /** Jobs retained before the oldest terminal ones are evicted. */
@@ -113,8 +111,8 @@ public class InMemoryJobStore implements JobStore {
     }
 
     /**
-     * The state transitions, shared with the DynamoDB store so both backends
-     * apply identical semantics rather than reimplementing them.
+     * The state transitions, kept separate from the storage so a different
+     * store would inherit identical semantics rather than reimplementing them.
      */
     static final class JobUpdates {
 

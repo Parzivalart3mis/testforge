@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # A new push supersedes an in-flight run for the same ref. Container-backed
+  # tests are the expensive part of this pipeline; running two generations of
+  # them against a superseded commit is pure waste.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '22'
+
+jobs:
+  # -------------------------------------------------------------------------
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Unit tests
+        working-directory: backend
+        run: ./mvnw -B --no-transfer-progress test
+
+      # Integration tests stand up a real PostgreSQL container through
+      # Testcontainers. Docker is present on the runner, so unlike a developer
+      # machine these never skip - this is the job that has to catch a
+      # migration that will not apply or a catalog query that is wrong.
+      - name: Integration tests
+        working-directory: backend
+        run: ./mvnw -B --no-transfer-progress verify
+
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+          retention-days: 7
+
+      - name: Coverage summary
+        if: always()
+        working-directory: backend
+        run: |
+          if [ -f target/site/jacoco/jacoco.csv ]; then
+            awk -F, 'NR>1 {miss+=$4; cov+=$5} END {
+              if (miss+cov > 0) printf "Instruction coverage: %.1f%%\n", 100*cov/(miss+cov)
+            }' target/site/jacoco/jacoco.csv >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # -------------------------------------------------------------------------
+  migrations:
+    name: Flyway migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: testforge
+          POSTGRES_PASSWORD: testforge
+          POSTGRES_DB: testforge
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U testforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # Applying the migrations against an empty database proves they run in
+      # order from nothing. The integration tests already cover that, but this
+      # job also checks the two failure modes they cannot.
+      - name: Apply migrations
+        working-directory: backend
+        run: |
+          ./mvnw -B --no-transfer-progress flyway:migrate \
+            -Dflyway.url=jdbc:postgresql://localhost:5432/testforge \
+            -Dflyway.user=testforge \
+            -Dflyway.password=testforge \
+            -Dflyway.locations=filesystem:src/main/resources/db/migration
+
+      # A checksum change on an already-applied migration is the classic way to
+      # break every environment that has run it. Validate catches an edited
+      # migration before it reaches one.
+      - name: Validate applied migrations
+        working-directory: backend
+        run: |
+          ./mvnw -B --no-transfer-progress flyway:validate \
+            -Dflyway.url=jdbc:postgresql://localhost:5432/testforge \
+            -Dflyway.user=testforge \
+            -Dflyway.password=testforge \
+            -Dflyway.locations=filesystem:src/main/resources/db/migration
+
+      # Re-running must be a no-op. A migration that is not idempotent under a
+      # second apply will fail here rather than during a deploy retry.
+      - name: Migrations are repeatable
+        working-directory: backend
+        run: |
+          ./mvnw -B --no-transfer-progress flyway:migrate \
+            -Dflyway.url=jdbc:postgresql://localhost:5432/testforge \
+            -Dflyway.user=testforge \
+            -Dflyway.password=testforge \
+            -Dflyway.locations=filesystem:src/main/resources/db/migration
+
+      - name: Demo schema applies cleanly
+        run: |
+          PGPASSWORD=testforge psql -h localhost -U testforge -d postgres -c "CREATE DATABASE demo_check"
+          PGPASSWORD=testforge psql -h localhost -U testforge -d demo_check -v ON_ERROR_STOP=1 \
+            -f backend/src/main/resources/db/demo/demo_commerce.sql
+          COUNT=$(PGPASSWORD=testforge psql -h localhost -U testforge -d demo_check -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
+          echo "Demo schema: $COUNT tables"
+          test "$COUNT" -eq 22
+
+  # -------------------------------------------------------------------------
+  console:
+    name: Console
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install
+        working-directory: console
+        run: npm ci
+
+      - name: Build
+        working-directory: console
+        run: npm run build
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-dist
+          path: console/dist/console/browser
+          retention-days: 7

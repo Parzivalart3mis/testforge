@@ -3,7 +3,6 @@ package com.helios.testforge.snapshot;
 import com.helios.testforge.config.TestForgeProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -18,9 +17,13 @@ import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Snapshot bundles on local disk, for development and tests. */
+/**
+ * Snapshot bundles on local disk.
+ *
+ * <p>Addressed by URI rather than by path, so a stored reference stays
+ * meaningful if bundles ever move to object storage behind the same interface.
+ */
 @Component
-@ConditionalOnProperty(name = "testforge.snapshots.backend", havingValue = "filesystem", matchIfMissing = true)
 public class FilesystemSnapshotStore implements SnapshotStore {
 
     private static final Logger log = LoggerFactory.getLogger(FilesystemSnapshotStore.class);

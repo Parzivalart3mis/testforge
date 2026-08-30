@@ -12,11 +12,16 @@ import java.util.UUID;
 /**
  * Where provisioning job state lives.
  *
- * <p>Two implementations back this: DynamoDB in deployed environments, and an
- * in-memory map for local runs and tests. The interface is deliberately narrow —
- * put, get, list, and a small number of transitions — because that is the whole
- * access pattern, and keeping it that narrow is what lets a key-value store
- * serve it without compromise.
+ * <p>Job records are written on every phase transition and polled by the console
+ * a couple of times a second while a run is in flight. That is progress data,
+ * not a system of record: the durable answer to "what was requested and what
+ * was masked" is in the control-plane database, and a job record is the live
+ * view of a run that is currently happening.
+ *
+ * <p>So it is held in memory, bounded, and expires. The interface stays narrow —
+ * put, get, list, and a few transitions — which is both the whole access pattern
+ * and what would let a durable key-value store slot in behind it unchanged if a
+ * deployment ever ran more than one instance.
  */
 public interface JobStore {
 

@@ -140,21 +140,19 @@ public record TestForgeProperties(
     }
 
     /**
-     * Job state storage.
+     * Job state.
      *
-     * @param backend   {@code dynamodb} in deployed environments, {@code memory} for local runs
-     * @param tableName DynamoDB table holding job records
-     * @param workers   size of the pool running provisioning pipelines
+     * @param retainedJobs how many job records to keep before evicting finished ones
+     * @param workers      size of the pool running provisioning pipelines
      */
-    public record Jobs(String backend, String tableName, int workers) {
+    public record Jobs(int retainedJobs, int workers) {
 
         public static Jobs defaults() {
-            return new Jobs("memory", "testforge-jobs", 4);
+            return new Jobs(500, 4);
         }
 
         public Jobs {
-            backend = (backend == null || backend.isBlank()) ? "memory" : backend.toLowerCase(java.util.Locale.ROOT);
-            tableName = (tableName == null || tableName.isBlank()) ? "testforge-jobs" : tableName;
+            retainedJobs = retainedJobs <= 0 ? 500 : retainedJobs;
             workers = workers <= 0 ? 4 : workers;
         }
     }
@@ -162,20 +160,15 @@ public record TestForgeProperties(
     /**
      * Snapshot export.
      *
-     * @param backend   {@code s3} in deployed environments, {@code filesystem} for local runs
-     * @param bucket    S3 bucket receiving snapshot bundles
-     * @param prefix    key prefix within the bucket
-     * @param directory filesystem root, when {@code backend} is filesystem
+     * @param directory filesystem root that bundles are written under
      */
-    public record Snapshots(String backend, String bucket, String prefix, String directory) {
+    public record Snapshots(String directory) {
 
         public static Snapshots defaults() {
-            return new Snapshots("filesystem", null, "datasets/", "./testforge-snapshots");
+            return new Snapshots("./testforge-snapshots");
         }
 
         public Snapshots {
-            backend = (backend == null || backend.isBlank()) ? "filesystem" : backend.toLowerCase(java.util.Locale.ROOT);
-            prefix = prefix == null ? "" : prefix;
             directory = (directory == null || directory.isBlank()) ? "./testforge-snapshots" : directory;
         }
     }

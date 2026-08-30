@@ -8,10 +8,7 @@ spring:
 testforge:
   masking:
     key: integration-test-masking-key
-  jobs:
-    backend: memory
   snapshots:
-    backend: filesystem
     directory: ${java.io.tmpdir}/testforge-test-snapshots
   generation:
     default-scale: 20

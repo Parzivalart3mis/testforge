@@ -20,24 +20,11 @@
   <properties>
     <java.version>21</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <awssdk.version>2.54.7</awssdk.version>
     <springdoc.version>3.1.0</springdoc.version>
     <datafaker.version>2.7.0</datafaker.version>
     <archunit.version>1.4.1</archunit.version>
     <jacoco.version>0.8.13</jacoco.version>
   </properties>
-
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>software.amazon.awssdk</groupId>
-        <artifactId>bom</artifactId>
-        <version>${awssdk.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
 
   <dependencies>
     <!-- Web / API -->
@@ -84,16 +71,6 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-    </dependency>
-
-    <!-- AWS: DynamoDB job state, S3 snapshot exports -->
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>dynamodb-enhanced</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>s3</artifactId>
     </dependency>
 
     <!-- Synthetic value corpora -->
@@ -175,6 +152,35 @@
             </goals>
           </execution>
         </executions>
+      </plugin>
+
+      <!--
+        Lets CI apply and validate migrations against a scratch database
+        without starting the application. Validate in particular catches a
+        checksum change on an already-applied migration, which is the classic
+        way to break every environment that has run it.
+      -->
+      <plugin>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-maven-plugin</artifactId>
+        <version>${flyway.version}</version>
+        <configuration>
+          <locations>
+            <location>filesystem:src/main/resources/db/migration</location>
+          </locations>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+          </dependency>
+        </dependencies>
       </plugin>
 
       <plugin>

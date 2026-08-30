@@ -6,10 +6,9 @@ import java.util.UUID;
 /**
  * Where snapshot bundles are kept.
  *
- * <p>S3 in deployed environments, the local filesystem otherwise. Both are
- * addressed by URI so a stored reference means the same thing whichever backend
- * wrote it, and a dataset exported locally can be described the same way as one
- * exported to a bucket.
+ * <p>Addressed by URI rather than by path, so a stored reference carries its own
+ * location scheme and a different store can be introduced without rewriting
+ * every row that points at a bundle.
  */
 public interface SnapshotStore {
 

@@ -2,9 +2,10 @@
 -- TestForge control plane.
 --
 -- Holds the durable record of what was requested, what was introspected and
--- what is currently leased. Deliberately does NOT hold job progress: that is a
--- write-heavy, poll-heavy, self-expiring access pattern that lives in DynamoDB
--- so it never competes with this database for connections.
+-- what is currently leased. Deliberately does NOT hold job progress: that is
+-- live view state for a run in flight, written on every phase transition and
+-- polled a couple of times a second, and it has no business competing with the
+-- audit trail for connections.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE schema_snapshot (

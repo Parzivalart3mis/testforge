@@ -100,14 +100,10 @@ testforge:
     reap-grace: PT5M
 
   jobs:
-    backend: ${TESTFORGE_JOBS_BACKEND:memory}
-    table-name: ${TESTFORGE_JOBS_TABLE:testforge-jobs}
+    retained-jobs: 500
     workers: 4
 
   snapshots:
-    backend: ${TESTFORGE_SNAPSHOTS_BACKEND:filesystem}
-    bucket: ${TESTFORGE_SNAPSHOTS_BUCKET:}
-    prefix: datasets/
     directory: ${TESTFORGE_SNAPSHOTS_DIR:./testforge-snapshots}
 
   targets: []
@@ -123,10 +119,6 @@ spring:
 testforge:
   masking:
     key: dev-only-masking-key-not-for-deployed-environments
-  jobs:
-    backend: memory
-  snapshots:
-    backend: filesystem
   targets:
     - id: demo-commerce
       display-name: "Demo Commerce (22 tables)"
@@ -139,19 +131,3 @@ logging:
   level:
     com.helios.testforge: DEBUG
 
----
-# Deployed on ECS: job state in DynamoDB, snapshots in S3.
-spring:
-  config:
-    activate:
-      on-profile: aws
-
-testforge:
-  jobs:
-    backend: dynamodb
-  snapshots:
-    backend: s3
-
-logging:
-  level:
-    com.helios.testforge: INFO

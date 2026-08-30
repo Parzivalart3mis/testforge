@@ -35,7 +35,7 @@ public final class Pg {
     /**
      * Quotes a string literal. The seeder binds every value as a JDBC parameter,
      * so this exists only for the paths that must emit standalone SQL text —
-     * generated DDL defaults and S3 snapshot dumps.
+     * generated DDL defaults and snapshot bundles.
      */
     public static String quoteLiteral(String value) {
         if (value == null) {
