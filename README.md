@@ -6,8 +6,8 @@ graph, generates referentially consistent synthetic rows, masks the PII
 deterministically, seeds it into an ephemeral database, and hands back a
 connection string under a TTL lease.
 
-**Live demo:** _deploy `console/` to Vercel and put the URL here._ It runs
-entirely in the browser, with no backend required.
+**[Live demo](https://console-jet-chi.vercel.app)** &middot; runs entirely in
+your browser, with no backend required.
 
 ---
 
@@ -162,8 +162,11 @@ IPs stay valid.
 
 ## Deployment
 
-The console is a static bundle. Vercel picks up `console/vercel.json`; the
-build is `npm run build` and the output is `dist/console/browser`.
+The console is a static bundle, deployed at
+[console-jet-chi.vercel.app](https://console-jet-chi.vercel.app). Vercel's root
+directory is set to `console/`, and `console/vercel.json` supplies the build
+command, the output directory (`dist/console/browser`), the SPA rewrite and the
+cache headers. Every push to `main` redeploys.
 
 The service is a normal Spring Boot application and needs a JVM and a
 PostgreSQL instance. It is not deployed as part of the demo.
